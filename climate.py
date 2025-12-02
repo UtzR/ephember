@@ -19,6 +19,7 @@ from pyephember2.pyephember2 import (
     zone_name,
     zone_target_temperature,
 )
+import requests
 import voluptuous as vol
 
 
@@ -243,8 +244,17 @@ class EphEmberThermostat(ClimateEntity):
 
     def update(self) -> None:
         """Get the latest data."""
-        self._ember.get_zones()
-        self._zone = self._ember.get_zone(self._zone["zoneid"])
+        try:
+            self._ember.get_zones()
+            self._zone = self._ember.get_zone(self._zone["zoneid"])
+        except requests.exceptions.Timeout as err:
+            _LOGGER.debug("Timeout updating zone %s: %s", self._zone_name, err)
+        except requests.exceptions.RequestException as err:
+            _LOGGER.debug("Network error updating zone %s: %s", self._zone_name, err)
+        except (TimeoutError, OSError) as err:
+            _LOGGER.debug("Connection error updating zone %s: %s", self._zone_name, err)
+        except RuntimeError as err:
+            _LOGGER.warning("Error updating zone %s: %s", self._zone_name, err)
 
     @staticmethod
     def map_mode_hass_eph(operation_mode):
