@@ -53,7 +53,7 @@ class EphemberConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
-                    title=f"EPH user: {user_input[CONF_USERNAME]}",
+                    title=user_input[CONF_USERNAME],
                     data=user_input,
                 )
 
