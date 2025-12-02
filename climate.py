@@ -65,10 +65,12 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import EphemberConfigEntry
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -154,26 +156,35 @@ class EphEmberThermostat(ClimateEntity):
     _attr_hvac_modes = OPERATION_LIST
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_preset_modes = [PRESET_NONE, PRESET_BOOST]
+    _attr_has_entity_name = True
+    _attr_name = None  # Use device name as entity name
 
     def __init__(self, ember, zone) -> None:
         """Initialize the thermostat."""
         self._ember = ember
         self._zone_name = zone_name(zone)
         self._zone = zone
-        self._attr_unique_id = zone["zoneid"]
+        self._zone_id = zone["zoneid"]
+        self._attr_unique_id = self._zone_id
 
         # hot water = true, is immersive device without target temperature control.
         self._hot_water = zone_is_hotwater(zone)
 
-        self._attr_name = self._zone_name
-    
         self._attr_supported_features = (
-                ClimateEntityFeature.TARGET_TEMPERATURE |
-                ClimateEntityFeature.PRESET_MODE |
-                ClimateEntityFeature.TURN_ON |
-                ClimateEntityFeature.TURN_OFF
+            ClimateEntityFeature.TARGET_TEMPERATURE
+            | ClimateEntityFeature.PRESET_MODE
+            | ClimateEntityFeature.TURN_ON
+            | ClimateEntityFeature.TURN_OFF
         )
         self._attr_target_temperature_step = 0.5
+
+        # Device info for device registry
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._zone_id)},
+            name=self._zone_name,
+            manufacturer="EPH Controls",
+            model=f"Zone ({zone.get('deviceType', 'Unknown')})",
+        )
 
     @property
     def preset_mode(self):
