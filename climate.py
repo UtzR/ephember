@@ -56,6 +56,7 @@ from homeassistant.components.climate import (
     PRESET_BOOST,
     PRESET_NONE
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_TEMPERATURE,
     CONF_PASSWORD,
@@ -66,6 +67,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+
+from . import EphemberConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,13 +99,35 @@ class EPHBoilerStates(IntEnum):
 HA_STATE_TO_EPH = {value: key for key, value in EPH_TO_HA_STATE.items()}
 
 
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: EphemberConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up EPH Controls Ember climate from a config entry."""
+    ember = entry.runtime_data
+
+    try:
+        homes = await hass.async_add_executor_job(ember.get_zones)
+    except RuntimeError:
+        _LOGGER.error("Failed to get zones from EPH Controls")
+        return
+
+    entities = [
+        EphEmberThermostat(ember, zone)
+        for home in homes
+        for zone in home["zones"]
+    ]
+    async_add_entities(entities)
+
+
 def setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
     add_entities: AddEntitiesCallback,
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
-    """Set up the ephember thermostat."""
+    """Set up the ephember thermostat via YAML (legacy)."""
     username = config.get(CONF_USERNAME)
     password = config.get(CONF_PASSWORD)
 
@@ -110,11 +135,12 @@ def setup_platform(
         ember = EphEmber(username, password)
     except RuntimeError:
         _LOGGER.error("Cannot login to EphEmber")
+        return
 
     try:
         homes = ember.get_zones()
     except RuntimeError:
-        _LOGGER.error("Fail to get zones")
+        _LOGGER.error("Failed to get zones")
         return
 
     add_entities(
