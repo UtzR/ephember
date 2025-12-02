@@ -183,8 +183,19 @@ class EphEmberThermostat(ClimateEntity):
             identifiers={(DOMAIN, self._zone_id)},
             name=self._zone_name,
             manufacturer="EPH Controls",
-            model=f"Zone ({zone.get('deviceType', 'Unknown')})",
+            model=self._get_device_model(zone.get("deviceType")),
         )
+
+    @staticmethod
+    def _get_device_model(device_type: int | None) -> str:
+        """Get human-readable model name from device type code."""
+        device_models = {
+            2: "Thermostat",
+            4: "Hot Water Controller",
+            514: "Hot Water Controller",
+            773: "Thermostatic Radiator Valve",
+        }
+        return device_models.get(device_type, f"Unknown ({device_type})")
 
     @property
     def preset_mode(self):
