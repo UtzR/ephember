@@ -212,9 +212,13 @@ class EphEmberThermostat(ClimateEntity):
             self._ember.deactivate_zone_boost(self._attr_unique_id)
         
         # Clear library cache and refresh zone data to get updated state
-        self._ember.NextHomeUpdateDaytime = None
-        self._ember.get_zones()
-        self._zone = self._ember.get_zone(self._zone["zoneid"])
+        # Don't fail if refresh times out - the command was already sent
+        try:
+            self._ember.NextHomeUpdateDaytime = None
+            self._ember.get_zones()
+            self._zone = self._ember.get_zone(self._zone["zoneid"])
+        except (requests.exceptions.Timeout, requests.exceptions.RequestException) as err:
+            _LOGGER.debug("Timeout refreshing zone after set_preset_mode: %s", err)
 
     @property
     def current_temperature(self) -> float | None:
@@ -246,9 +250,13 @@ class EphEmberThermostat(ClimateEntity):
         if mode is not None:
             self._ember.set_zone_mode(self._zone["zoneid"], mode)
             # Refresh zone data to get updated state
-            self._ember.NextHomeUpdateDaytime = None
-            self._ember.get_zones()
-            self._zone = self._ember.get_zone(self._zone["zoneid"])
+            # Don't fail if refresh times out - the command was already sent
+            try:
+                self._ember.NextHomeUpdateDaytime = None
+                self._ember.get_zones()
+                self._zone = self._ember.get_zone(self._zone["zoneid"])
+            except (requests.exceptions.Timeout, requests.exceptions.RequestException) as err:
+                _LOGGER.debug("Timeout refreshing zone after set_hvac_mode: %s", err)
         else:
             _LOGGER.error("Invalid operation mode provided %s", hvac_mode)
 
@@ -269,9 +277,13 @@ class EphEmberThermostat(ClimateEntity):
         self._ember.set_zone_target_temperature(self._zone["zoneid"], temperature)
         
         # Refresh zone data to get updated state
-        self._ember.NextHomeUpdateDaytime = None
-        self._ember.get_zones()
-        self._zone = self._ember.get_zone(self._zone["zoneid"])
+        # Don't fail if refresh times out - the command was already sent
+        try:
+            self._ember.NextHomeUpdateDaytime = None
+            self._ember.get_zones()
+            self._zone = self._ember.get_zone(self._zone["zoneid"])
+        except (requests.exceptions.Timeout, requests.exceptions.RequestException) as err:
+            _LOGGER.debug("Timeout refreshing zone after set_temperature: %s", err)
 
     @property
     def min_temp(self) -> float:
