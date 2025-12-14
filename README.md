@@ -100,3 +100,4 @@ climate:
 
 This project is licensed under the same terms as Home Assistant Core.
 
+
