@@ -1,0 +1,288 @@
+EMBER / TOPBAND POINTINDEX SPECIFICATION (DRAFT)
+======================================================
+
+Status
+------
+This is a reverse-engineered, observation-based specification of the "pointData"
+attribute system used by Ember / Topband-cloud heating controls.
+
+It is NOT official and may change. Use at your own risk.
+
+This document focuses on:
+  * pointData binary encoding (as seen in MQTT upload/pointdata and download/pointdata)
+  * point types (t)
+  * point indices (i) that have been observed and their semantics
+  * known command patterns (boost on/off, mode off, setpoint change)
+
+Terminology
+-----------
+Product:
+  * productId: product identifier (string)
+  * uid: home/system uid (string)
+
+Zone / Device (within a home):
+  * mac: device address-like identifier used to target a specific zone
+  * zoneid: zone identifier used by some HTTP APIs
+
+Transport
+---------
+MQTT topics (observed):
+  <productId>/<uid>/upload/pointdata    (device/gateway -> cloud/app)
+  <productId>/<uid>/download/pointdata  (cloud/app -> device/gateway)
+
+Payload envelope (JSON, observed):
+  {
+    "common": {
+      "productId": "...",
+      "uid": "...",
+      "userId": "...",     // present in downlink
+      "serial": "...",     // varying
+      "timestamp": <ms>    // sometimes ms, sometimes relative counter; depends on layer
+    },
+    "data": {
+      "mac": "10ba77692",
+      "pointData": "BASE64..."
+    }
+  }
+
+PointData Encoding
+------------------
+pointData is a base64 encoding of a sequence of attribute records.
+
+Observed attribute record format:
+  [H][I][T][V...]
+
+Where:
+  H = 1 byte header (observed as 0x00 in all captured samples)
+  I = 1 byte point index (0..255 observed)
+  T = 1 byte point type identifier
+  V = value bytes, length determined by T
+
+Multiple records may be concatenated to form a single pointData payload.
+
+IMPORTANT:
+  * The header H is always 0x00 in observed payloads.
+  * It MAY be part of a 2-byte index in some models, but no evidence yet.
+  * The system frequently bundles telemetry points (15..18) in many uplink messages.
+
+Point Types (T)
+---------------
+The following type mapping is based on captured TBAttribute logs and packet decoding.
+
+Type 1 (T=0x01): 1-byte integer / enum / boolean
+  Length: 1 byte
+  Examples:
+    * boost flag (i=8): 0/1
+    * mode enum (i=7): 0..3
+    * heating output state (i=10): 1/2 (off/on)
+
+Type 2 (T=0x02): 2-byte integer, commonly temperature *10
+  Length: 2 bytes, big-endian unsigned
+  Examples:
+    * current temperature (i=5) reported as 194 -> 19.4C
+
+Type 4 (T=0x04): 2-byte integer, commonly temperature *10 (setpoints)
+  Length: 2 bytes, big-endian unsigned
+  Examples:
+    * target temperature setpoint (i=6) value 200 -> 20.0C
+    * boost target temperature (i=14) value 200 -> 20.0C
+
+Type 5 (T=0x05): 4-byte integer, timestamps/counters/telemetry
+  Length: 4 bytes, big-endian unsigned
+  Examples:
+    * boost start epoch seconds (i=9): 1765651610
+    * telemetry/counters (i=15..18)
+
+NOTE ON SCALE:
+  Temperatures are represented as integer = degreesC * 10.
+  Example: 20.0C -> 200, 50.0C -> 500 (hot water).
+
+Point Index Registry (Observed)
+-------------------------------
+
+Legend:
+  CONFIRMED: validated by direct cause/effect experiment and/or TBAttribute logs
+  LIKELY: consistent across multiple captures but not yet validated with a dedicated experiment
+  UNKNOWN: observed but semantics not established
+
+Index 5  (CONFIRMED)
+  Name: Current Temperature
+  Type: 2
+  Encoding: degreesC * 10
+  Notes:
+    Uplink messages show i=5 values like 194 (19.4C), 208 (20.8C).
+
+Index 6  (CONFIRMED)
+  Name: Target Temperature (Setpoint)
+  Type: 4
+  Encoding: degreesC * 10
+  Evidence:
+    Physical thermostat change 19C -> 20C produced uplink i=6 value 200.
+  Notes:
+    Used for space heating zones. For hot water, target may be 500 (50.0C).
+
+Index 7  (CONFIRMED)
+  Name: Zone Mode
+  Type: 1
+  Values (observed/consistent):
+    0 = auto
+    1 = all day
+    2 = on
+    3 = off
+  Evidence:
+    Home Assistant "turn off zone" produced uplink with i=7 value 3 (off).
+
+Index 8  (CONFIRMED)
+  Name: Boost Active Flag / Boost Hours (implementation-dependent)
+  Type: 1
+  Values:
+    0 = boost inactive
+    1..3 = boost active; may encode hours on some models (needs more validation)
+  Evidence:
+    App boost-on command produced i=8 value 1.
+    App boost-off produced i=8 value 0.
+  Notes:
+    Some logs suggest "boost hours" is also represented via this index for certain device types.
+    Treat i=8 as "boost state / hours" and verify on your hardware.
+
+Index 9  (CONFIRMED)
+  Name: Boost Start Time
+  Type: 5
+  Encoding: epoch seconds (NOT milliseconds) in observed payloads
+  Evidence:
+    Boost-on downlink included i=9 value 1765651610 and gateway uplink echoed it.
+
+Index 10 (CONFIRMED)
+  Name: Heating Output / Boiler State (zone-level)
+  Type: 1
+  Values (observed):
+    1 = off
+    2 = on
+  Evidence:
+    Turning off zone produced uplink i=10 value 1.
+    Other state updates show i=10 value 2 when heating active.
+
+Index 11 (UNKNOWN/LIKELY)
+  Name: Unknown status flag
+  Type: often 1 in HTTP snapshots; observed in zoneProgram pointDataList
+  Notes:
+    Present in several zone snapshots. Needs dedicated experiment.
+
+Index 13 (UNKNOWN/LIKELY)
+  Name: Unknown status flag
+  Type: often 1 in HTTP snapshots; observed in zoneProgram pointDataList
+  Notes:
+    Present in several zone snapshots. Needs dedicated experiment.
+
+Index 14 (CONFIRMED for boost; LIKELY for non-boost)
+  Name: Boost Target Temperature
+  Type: 4
+  Encoding: degreesC * 10
+  Evidence:
+    Boost-on downlink included i=14 value 200 for 20.0C.
+  Notes:
+    In some zone snapshots, i=14 matches the current target setpoint.
+    It may be "current effective target" or "boost target" depending on mode.
+
+Index 15 (LIKELY)
+  Name: Telemetry / Schedule / Runtime Counter A
+  Type: 5
+  Evidence:
+    Appears in many uplink pointData bundles.
+    Value changes over time (e.g., 1855062016, 1828061184, etc.)
+  Notes:
+    Likely an internal counter or schedule-related bitmap. Requires correlation.
+
+Index 16 (LIKELY)
+  Name: Telemetry / Capability / Runtime Counter B
+  Type: 5
+  Evidence:
+    Often constant in captures (e.g., 329777152).
+  Notes:
+    Might be a capability bitmask or a fixed identifier.
+
+Index 17 (LIKELY)
+  Name: Telemetry / Counter C (sometimes boost-related elsewhere)
+  Type: 5
+  Evidence:
+    Often 0 in captures; sometimes non-zero in zoneProgram snapshots.
+  Notes:
+    Could represent remaining boost time, last-action time, or internal counter.
+
+Index 18 (LIKELY)
+  Name: Telemetry / Counter D
+  Type: 5
+  Evidence:
+    Often 0 in captures; appears alongside 15-17.
+  Notes:
+    Unknown; gather more data with changes in schedules / setbacks / window open.
+
+Command Patterns (MQTT Downlink)
+-------------------------------
+
+1) BOOST ON (CONFIRMED)
+  Goal: Enable boost for a zone with a given target temp and duration.
+
+  Observed downlink point set:
+    i=8  t=1  v=1                 (boost active)
+    i=9  t=5  v=<epoch_seconds>   (boost start time)
+    i=14 t=4  v=<tempC*10>        (boost target)
+
+  Example (20.0C boost):
+    i=14 v=200
+
+  Notes:
+    Duration may be encoded implicitly (e.g., via i=8) OR via other indices
+    depending on device type. Validate on your system by testing 1h/2h/3h.
+
+2) BOOST OFF / CANCEL (CONFIRMED)
+  Observed downlink point set:
+    i=8 t=1 v=0
+    i=9 t=5 v=0
+  Notes:
+    i=14 typically not changed when cancelling (observed in earlier work).
+
+3) SET TARGET TEMPERATURE (CONFIRMED uplink; downlink method depends on control path)
+  When the physical thermostat changed 19->20C, uplink reported:
+    i=6 t=4 v=200
+
+  Downlink for setpoint via MQTT is expected to use:
+    i=6 t=4 v=<tempC*10>
+  This should be validated by capturing an app-originated setpoint change
+  or issuing a controlled MQTT downlink in a test environment.
+
+4) TURN ZONE OFF (CONFIRMED)
+  Home Assistant turning off Downstairs produced uplink:
+    i=7 t=1 v=3   (mode off)
+  Shortly followed by:
+    i=10 t=1 v=1  (output/boiler off)
+
+  Downlink likely sets i=7 to 3.
+
+Uplink Patterns (Device/Gateway Reports)
+----------------------------------------
+Uplink pointData commonly includes:
+  * One "changed" point (e.g., i=6 for new setpoint, i=7 for mode change)
+  * PLUS a bundle of telemetry points i=15..18
+
+Example:
+  Changing mode produced uplink with i=7, and bundled i=15..18.
+
+Operational Notes
+-----------------
+* Some zones represent hot water and use higher setpoints (e.g., 50.0C -> 500).
+* deviceType differs between zones (e.g., heating vs hot water). Some indices
+  may change meaning by deviceType.
+* Values may be unsigned big-endian; all decoded samples matched that.
+
+Open Questions / TODO
+---------------------
+1) Confirm whether i=8 encodes boost duration (1..3 hours) on this hardware.
+2) Determine semantics of i=3, i=11, i=13 by controlled toggles and correlation.
+3) Identify i=15..18 meanings by logging over time and during schedule actions.
+4) Validate MQTT downlink for setpoint changes (i=6) and "on" (i=7=2) / "auto" (i=7=0).
+5) Determine whether header byte H is always 0 or can be used for extended indices.
+
+Versioning
+----------
+Draft version: 0.2 (2025-12-13)
