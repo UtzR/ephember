@@ -54,6 +54,7 @@ class EphemberDiagnosticSensor(SensorEntity):
             identifiers={(DOMAIN, entry.entry_id)},
             name="EPH Controls Ember",
             manufacturer="EPH Controls",
+            model=data.system_type if data and data.system_type else None,
         )
 
     @property

@@ -37,6 +37,7 @@ class EphemberData:
         self.last_mqtt_received: datetime | None = None
         self.last_http_request: datetime | None = None
         self.mqtt_connected: bool = False
+        self.system_type: str | None = None
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> bool:
@@ -57,6 +58,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
 
     # Create data storage
     data = EphemberData(ember)
+
+    # Update HTTP request timestamp for initial request
+    data.last_http_request = datetime.now(timezone.utc)
     
     # Build MAC to zone_id mapping
     for home in homes:
@@ -65,6 +69,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
             zone_id = zone.get("zoneid")
             if mac and zone_id:
                 data.mac_to_zone_id[mac] = zone_id
+            # Extract systemType from first zone (all zones typically have same systemType)
+            if data.system_type is None and zone.get("systemType"):
+                data.system_type = zone.get("systemType")
 
     # Set up MQTT callbacks
     def on_mqtt_pointdata(mac: str, parsed_pointdata: dict) -> None:
@@ -81,11 +88,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
                 entity._zone = zone
                 # Schedule state update on event loop (thread-safe)
                 # This callback runs in MQTT thread, so we need to schedule on event loop
-                def update_entity_state():
-                    """Update entity state on event loop."""
-                    hass.async_create_task(entity.async_write_ha_state())
-                
-                hass.loop.call_soon_threadsafe(update_entity_state)
+                # async_write_ha_state() is a @callback method (synchronous but must run on event loop)
+                hass.loop.call_soon_threadsafe(entity.async_write_ha_state)
         _LOGGER.debug("MQTT update received for MAC %s (zone_id: %s)", mac, zone_id)
 
     def on_mqtt_log(direction: str, content: str) -> None:
