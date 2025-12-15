@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import IntEnum
 import logging
 from typing import Any
 
-from pyephember2.pyephember2 import (
+from .pyephember2.pyephember2 import (
     EphEmber,
     ZoneMode,
     ZoneCommand,
@@ -70,12 +70,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import EphemberConfigEntry
-from .const import DOMAIN
+from .const import CONF_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Return cached results if last scan was less then this time ago
-SCAN_INTERVAL = timedelta(seconds=120)
+# Default scan interval (will be overridden by config)
+SCAN_INTERVAL = timedelta(seconds=300)
 
 OPERATION_LIST = [HVACMode.HEAT_COOL, HVACMode.HEAT, HVACMode.OFF]
 
@@ -107,7 +107,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up EPH Controls Ember climate from a config entry."""
-    ember = entry.runtime_data
+    data = entry.runtime_data
+    ember = data.ember
 
     try:
         homes = await hass.async_add_executor_job(ember.get_zones)
@@ -116,10 +117,15 @@ async def async_setup_entry(
         return
 
     entities = [
-        EphEmberThermostat(ember, zone)
+        EphEmberThermostat(data, ember, zone, entry)
         for home in homes
         for zone in home["zones"]
     ]
+    
+    # Register entities in data structure for MQTT callbacks
+    for entity in entities:
+        data.zone_id_to_entity[entity._zone_id] = entity
+    
     async_add_entities(entities)
 
 
@@ -145,8 +151,12 @@ def setup_platform(
         _LOGGER.error("Failed to get zones")
         return
 
+    # Create minimal data object for legacy setup
+    from . import EphemberData
+    data = EphemberData(ember)
+
     add_entities(
-        EphEmberThermostat(ember, zone) for home in homes for zone in home["zones"]
+        EphEmberThermostat(data, ember, zone, None) for home in homes for zone in home["zones"]
     )
 
 
@@ -159,9 +169,11 @@ class EphEmberThermostat(ClimateEntity):
     _attr_has_entity_name = True
     _attr_name = None  # Use device name as entity name
 
-    def __init__(self, ember, zone) -> None:
+    def __init__(self, data, ember, zone, entry) -> None:
         """Initialize the thermostat."""
+        self._data = data
         self._ember = ember
+        self._entry = entry
         self._zone_name = zone_name(zone)
         self._zone = zone
         self._zone_id = zone["zoneid"]
@@ -205,20 +217,15 @@ class EphEmberThermostat(ClimateEntity):
     def set_preset_mode(self, preset_mode):
         """Set new target preset mode."""
         if preset_mode == PRESET_BOOST:
-            self._ember.activate_zone_boost(
+            self._ember.activate_zone_boost_mqtt(
                 self._attr_unique_id, zone_target_temperature(self._zone)
             )
         else:
-            self._ember.deactivate_zone_boost(self._attr_unique_id)
+            self._ember.deactivate_zone_boost_mqtt(self._attr_unique_id)
         
-        # Clear library cache and refresh zone data to get updated state
-        # Don't fail if refresh times out - the command was already sent
-        try:
-            self._ember.NextHomeUpdateDaytime = None
-            self._ember.get_zones()
-            self._zone = self._ember.get_zone(self._zone["zoneid"])
-        except (requests.exceptions.Timeout, requests.exceptions.RequestException) as err:
-            _LOGGER.debug("Timeout refreshing zone after set_preset_mode: %s", err)
+        # Update timestamp
+        if self._data:
+            self._data.last_mqtt_sent = datetime.now()
 
     @property
     def current_temperature(self) -> float | None:
@@ -248,15 +255,16 @@ class EphEmberThermostat(ClimateEntity):
         """Set the operation mode."""
         mode = self.map_mode_hass_eph(hvac_mode)
         if mode is not None:
-            self._ember.set_zone_mode(self._zone["zoneid"], mode)
-            # Refresh zone data to get updated state
-            # Don't fail if refresh times out - the command was already sent
-            try:
-                self._ember.NextHomeUpdateDaytime = None
-                self._ember.get_zones()
-                self._zone = self._ember.get_zone(self._zone["zoneid"])
-            except (requests.exceptions.Timeout, requests.exceptions.RequestException) as err:
-                _LOGGER.debug("Timeout refreshing zone after set_hvac_mode: %s", err)
+            if hvac_mode == HVACMode.OFF:
+                self._ember.turn_zone_off_mqtt(self._zone["zoneid"])
+            elif hvac_mode == HVACMode.HEAT:
+                self._ember.turn_zone_on_mqtt(self._zone["zoneid"])
+            else:
+                self._ember.set_zone_mode_mqtt(self._zone["zoneid"], mode)
+            
+            # Update timestamp
+            if self._data:
+                self._data.last_mqtt_sent = datetime.now()
         else:
             _LOGGER.error("Invalid operation mode provided %s", hvac_mode)
 
@@ -274,16 +282,11 @@ class EphEmberThermostat(ClimateEntity):
         if temperature > self.max_temp or temperature < self.min_temp:
             return
 
-        self._ember.set_zone_target_temperature(self._zone["zoneid"], temperature)
+        self._ember.set_zone_target_temperature_mqtt(self._zone["zoneid"], temperature)
         
-        # Refresh zone data to get updated state
-        # Don't fail if refresh times out - the command was already sent
-        try:
-            self._ember.NextHomeUpdateDaytime = None
-            self._ember.get_zones()
-            self._zone = self._ember.get_zone(self._zone["zoneid"])
-        except (requests.exceptions.Timeout, requests.exceptions.RequestException) as err:
-            _LOGGER.debug("Timeout refreshing zone after set_temperature: %s", err)
+        # Update timestamp
+        if self._data:
+            self._data.last_mqtt_sent = datetime.now()
 
     @property
     def min_temp(self) -> float:
@@ -307,6 +310,9 @@ class EphEmberThermostat(ClimateEntity):
         try:
             self._ember.get_zones()
             self._zone = self._ember.get_zone(self._zone["zoneid"])
+            # Update HTTP request timestamp
+            if self._data:
+                self._data.last_http_request = datetime.now()
         except requests.exceptions.Timeout as err:
             _LOGGER.debug("Timeout updating zone %s: %s", self._zone_name, err)
         except requests.exceptions.RequestException as err:

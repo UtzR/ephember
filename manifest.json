@@ -5,7 +5,6 @@
   "codeowners": ["@ttroy50", "@roberty99"],
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/ephember",
-  "iot_class": "cloud_polling",
-  "loggers": ["pyephember2"],
-  "requirements": ["pyephember2==0.4.12"]
+  "iot_class": "cloud_push",
+  "loggers": ["pyephember2"]
 }
