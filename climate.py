@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import IntEnum
 import logging
 from typing import Any
@@ -31,15 +31,13 @@ def _patched_set_zone_boost(self, zone, boost_temperature, num_hours, timestamp=
     Passing None for index allows zone_command_to_ints to fall back to
     GetPointIndex() to determine the correct index.
     """
-    import datetime
-    
     # Fix: Pass None as third argument (index) - the library will use GetPointIndex fallback
     cmds = [ZoneCommand('BOOST_HOURS', num_hours, None)]
     if boost_temperature is not None:
         cmds.append(ZoneCommand('BOOST_TEMP', boost_temperature, None))
     if timestamp is not None:
         if timestamp == 0:
-            timestamp = int(datetime.datetime.now().timestamp())
+            timestamp = int(datetime.now(timezone.utc).timestamp())
         cmds.append(ZoneCommand('BOOST_TIME', timestamp, None))
     return self.messenger.send_zone_commands(zone, cmds)
 
@@ -225,7 +223,7 @@ class EphEmberThermostat(ClimateEntity):
         
         # Update timestamp
         if self._data:
-            self._data.last_mqtt_sent = datetime.now()
+            self._data.last_mqtt_sent = datetime.now(timezone.utc)
 
     @property
     def current_temperature(self) -> float | None:
@@ -264,7 +262,7 @@ class EphEmberThermostat(ClimateEntity):
             
             # Update timestamp
             if self._data:
-                self._data.last_mqtt_sent = datetime.now()
+                self._data.last_mqtt_sent = datetime.now(timezone.utc)
         else:
             _LOGGER.error("Invalid operation mode provided %s", hvac_mode)
 
@@ -286,7 +284,7 @@ class EphEmberThermostat(ClimateEntity):
         
         # Update timestamp
         if self._data:
-            self._data.last_mqtt_sent = datetime.now()
+            self._data.last_mqtt_sent = datetime.now(timezone.utc)
 
     @property
     def min_temp(self) -> float:
@@ -312,7 +310,7 @@ class EphEmberThermostat(ClimateEntity):
             self._zone = self._ember.get_zone(self._zone["zoneid"])
             # Update HTTP request timestamp
             if self._data:
-                self._data.last_http_request = datetime.now()
+                self._data.last_http_request = datetime.now(timezone.utc)
         except requests.exceptions.Timeout as err:
             _LOGGER.debug("Timeout updating zone %s: %s", self._zone_name, err)
         except requests.exceptions.RequestException as err:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from .pyephember2.pyephember2 import EphEmber
@@ -69,7 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
     # Set up MQTT callbacks
     def on_mqtt_pointdata(mac: str, parsed_pointdata: dict) -> None:
         """Handle MQTT pointdata updates."""
-        data.last_mqtt_received = datetime.now()
+        data.last_mqtt_received = datetime.now(timezone.utc)
         data.mqtt_connected = True
         
         zone_id = data.mac_to_zone_id.get(mac)
@@ -79,14 +79,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
             zone = ember.get_zone_by_mac(mac)
             if zone:
                 entity._zone = zone
-                # Schedule state update
-                hass.async_create_task(entity.async_write_ha_state())
+                # Schedule state update on event loop (thread-safe)
+                # This callback runs in MQTT thread, so we need to schedule on event loop
+                def update_entity_state():
+                    """Update entity state on event loop."""
+                    hass.async_create_task(entity.async_write_ha_state())
+                
+                hass.loop.call_soon_threadsafe(update_entity_state)
         _LOGGER.debug("MQTT update received for MAC %s (zone_id: %s)", mac, zone_id)
 
     def on_mqtt_log(direction: str, content: str) -> None:
         """Handle MQTT log messages to track sent messages."""
         if direction == "SEND":
-            data.last_mqtt_sent = datetime.now()
+            data.last_mqtt_sent = datetime.now(timezone.utc)
             data.mqtt_connected = True
 
     def on_mqtt_connect(client, userdata, flags, rc, properties=None) -> None:
