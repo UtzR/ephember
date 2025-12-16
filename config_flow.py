@@ -81,6 +81,11 @@ class EphemberConfigFlow(ConfigFlow, domain=DOMAIN):
 class EphemberOptionsFlowHandler(OptionsFlow):
     """Handle options flow for EPH Controls Ember."""
 
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        # config_entry parameter is accepted but not stored
+        # It's available as self.config_entry property from OptionsFlow base class
+        pass
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
