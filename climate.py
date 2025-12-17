@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from enum import IntEnum
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from .pyephember2.pyephember2 import (
     EphEmber,
@@ -175,6 +175,7 @@ class EphEmberThermostat(ClimateEntity):
         self._zone_name = zone_name(zone)
         self._zone = zone
         self._zone_id = zone["zoneid"]
+        self._zone_mac = zone.get("mac")
         self._attr_unique_id = self._zone_id
 
         # hot water = true, is immersive device without target temperature control.
@@ -215,11 +216,19 @@ class EphEmberThermostat(ClimateEntity):
     def set_preset_mode(self, preset_mode):
         """Set new target preset mode."""
         if preset_mode == PRESET_BOOST:
-            self._ember.activate_zone_boost_mqtt(
-                self._attr_unique_id, zone_target_temperature(self._zone)
-            )
+            boost_temp = zone_target_temperature(self._zone)
+
+            def _send(zone_id: str) -> bool:
+                """Activate boost via MQTT for given zone id."""
+                return self._ember.activate_zone_boost_mqtt(zone_id, boost_temp)
+
+            self._call_mqtt_with_resync(_send)
         else:
-            self._ember.deactivate_zone_boost_mqtt(self._attr_unique_id)
+            def _send(zone_id: str) -> bool:
+                """Deactivate boost via MQTT for given zone id."""
+                return self._ember.deactivate_zone_boost_mqtt(zone_id)
+
+            self._call_mqtt_with_resync(_send)
         
         # Update timestamp
         if self._data:
@@ -249,16 +258,81 @@ class EphEmberThermostat(ClimateEntity):
         mode = zone_mode(self._zone)
         return self.map_mode_eph_hass(mode)
 
+    def _call_mqtt_with_resync(self, send_func: Callable[[str], bool]) -> bool:
+        """Call a MQTT action; on Unknown zone, resync HTTP and retry once."""
+        try:
+            # First attempt with current zone id
+            return send_func(self._zone_id)
+        except RuntimeError as err:
+            # Only handle the specific "Unknown zone: ..." case
+            if "Unknown zone" not in str(err):
+                raise
+
+            _LOGGER.debug(
+                "Zone %s (MAC %s) unknown in Ember cache, attempting HTTP resync",
+                self._zone_name,
+                self._zone_mac,
+            )
+
+            # 1) Force HTTP refresh of homes/zones
+            try:
+                # Clear cache forcing fresh HTTP fetch
+                self._ember.NextHomeUpdateDaytime = None
+                self._ember.get_zones()
+            except Exception as sync_err:  # pragma: no cover - defensive
+                _LOGGER.warning(
+                    "Failed to refresh zones from Ember after Unknown zone for %s: %s",
+                    self._zone_name,
+                    sync_err,
+                )
+                raise
+
+            # 2) Re-find this zone by MAC in the refreshed data
+            new_zone = None
+            try:
+                if self._zone_mac:
+                    new_zone = self._ember.get_zone_by_mac(self._zone_mac)
+            except Exception as find_err:  # pragma: no cover - defensive
+                _LOGGER.warning(
+                    "Failed to locate zone by MAC %s after resync for %s: %s",
+                    self._zone_mac,
+                    self._zone_name,
+                    find_err,
+                )
+
+            if not new_zone:
+                _LOGGER.error(
+                    "Zone %s (MAC %s) still unknown after HTTP resync; cannot send MQTT command",
+                    self._zone_name,
+                    self._zone_mac,
+                )
+                raise
+
+            # 3) Update local zone data & zone_id and retry once
+            self._zone = new_zone
+            self._zone_id = new_zone["zoneid"]
+
+            _LOGGER.info(
+                "Rebound zone %s to new zoneid %s after HTTP resync, retrying MQTT action",
+                self._zone_name,
+                self._zone_id,
+            )
+
+            return send_func(self._zone_id)
+
     def set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set the operation mode."""
         mode = self.map_mode_hass_eph(hvac_mode)
         if mode is not None:
-            if hvac_mode == HVACMode.OFF:
-                self._ember.turn_zone_off_mqtt(self._zone["zoneid"])
-            elif hvac_mode == HVACMode.HEAT:
-                self._ember.turn_zone_on_mqtt(self._zone["zoneid"])
-            else:
-                self._ember.set_zone_mode_mqtt(self._zone["zoneid"], mode)
+            def _send(zone_id: str) -> bool:
+                """Send MQTT command for given zone id."""
+                if hvac_mode == HVACMode.OFF:
+                    return self._ember.turn_zone_off_mqtt(zone_id)
+                if hvac_mode == HVACMode.HEAT:
+                    return self._ember.turn_zone_on_mqtt(zone_id)
+                return self._ember.set_zone_mode_mqtt(zone_id, mode)
+
+            self._call_mqtt_with_resync(_send)
             
             # Update timestamp
             if self._data:
@@ -279,8 +353,12 @@ class EphEmberThermostat(ClimateEntity):
 
         if temperature > self.max_temp or temperature < self.min_temp:
             return
+        
+        def _send(zone_id: str) -> bool:
+            """Send target temperature via MQTT for given zone id."""
+            return self._ember.set_zone_target_temperature_mqtt(zone_id, temperature)
 
-        self._ember.set_zone_target_temperature_mqtt(self._zone["zoneid"], temperature)
+        self._call_mqtt_with_resync(_send)
         
         # Update timestamp
         if self._data:
@@ -307,7 +385,7 @@ class EphEmberThermostat(ClimateEntity):
         """Get the latest data."""
         try:
             self._ember.get_zones()
-            self._zone = self._ember.get_zone(self._zone["zoneid"])
+            self._zone = self._ember.get_zone(self._zone_id)
             # Update HTTP request timestamp
             if self._data:
                 self._data.last_http_request = datetime.now(timezone.utc)
