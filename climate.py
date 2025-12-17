@@ -318,7 +318,15 @@ class EphEmberThermostat(ClimateEntity):
         except (TimeoutError, OSError) as err:
             _LOGGER.debug("Connection error updating zone %s: %s", self._zone_name, err)
         except RuntimeError as err:
-            _LOGGER.warning("Error updating zone %s: %s", self._zone_name, err)
+            # Check if it's a server error (e.g., 502 Bad Gateway)
+            error_str = str(err)
+            if "response code" in error_str:
+                # Server errors (5xx) are temporary and should be logged at debug level
+                # since we have MQTT as backup for real-time updates
+                _LOGGER.debug("Server error updating zone %s: %s", self._zone_name, err)
+            else:
+                # Other RuntimeErrors might be more serious
+                _LOGGER.warning("Error updating zone %s: %s", self._zone_name, err)
 
     @staticmethod
     def map_mode_hass_eph(operation_mode):
