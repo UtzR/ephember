@@ -408,12 +408,13 @@ class EphEmberThermostat(ClimateEntity):
 
     @staticmethod
     def _time_units_to_hhmm(time_units: int) -> str:
-        """Convert 10-minute units since midnight to HH:MM format."""
+        """Convert 10-minute units since midnight to HH:MM (wrap to 24h clock)."""
         if time_units is None or time_units < 0:
             return "00:00"
         total_minutes = time_units * 10
-        hours = total_minutes // 60
-        minutes = total_minutes % 60
+        # Fold into a single 24-hour day to avoid times like 31:40
+        minutes_in_day = total_minutes % (24 * 60)
+        hours, minutes = divmod(minutes_in_day, 60)
         return f"{hours:02d}:{minutes:02d}"
 
     @staticmethod
