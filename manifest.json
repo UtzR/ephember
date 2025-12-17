@@ -1,6 +1,6 @@
 {
   "domain": "ephember",
-  "version": "2.1",
+  "version": "3.1",
   "name": "EPH Controls Ember",
   "codeowners": ["@ttroy50", "@roberty99"],
   "config_flow": true,
