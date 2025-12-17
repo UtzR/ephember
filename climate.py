@@ -407,6 +407,71 @@ class EphEmberThermostat(ClimateEntity):
                 _LOGGER.warning("Error updating zone %s: %s", self._zone_name, err)
 
     @staticmethod
+    def _time_units_to_hhmm(time_units: int) -> str:
+        """Convert 10-minute units since midnight to HH:MM format."""
+        if time_units is None or time_units < 0:
+            return "00:00"
+        total_minutes = time_units * 10
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        return f"{hours:02d}:{minutes:02d}"
+
+    @staticmethod
+    def _format_period(period: dict[str, Any]) -> str | None:
+        """Format a single schedule period (p1, p2, or p3) to 'HH:MM-HH:MM'."""
+        if not period:
+            return None
+        start_time = period.get("startTime")
+        end_time = period.get("endTime")
+
+        # Disabled / empty period
+        if start_time is None or end_time is None or start_time == end_time:
+            return None
+
+        start_str = EphEmberThermostat._time_units_to_hhmm(start_time)
+        end_str = EphEmberThermostat._time_units_to_hhmm(end_time)
+        return f"{start_str}-{end_str}"
+
+    @staticmethod
+    def _format_day_schedule(day_data: dict[str, Any]) -> dict[str, str | None]:
+        """Format one day's schedule (p1, p2, p3) into a dict."""
+        return {
+            "p1": EphEmberThermostat._format_period(day_data.get("p1", {})),
+            "p2": EphEmberThermostat._format_period(day_data.get("p2", {})),
+            "p3": EphEmberThermostat._format_period(day_data.get("p3", {})),
+        }
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra attributes, including the zone's schedule."""
+        attrs: dict[str, Any] = {}
+
+        device_days = self._zone.get("deviceDays", [])
+        if device_days:
+            # dayType: 0=Sunday ... 6=Saturday
+            day_names = [
+                "Sunday",
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+            ]
+            schedule: dict[str, dict[str, str | None]] = {}
+
+            for day_data in device_days:
+                day_type = day_data.get("dayType")
+                if isinstance(day_type, int) and 0 <= day_type <= 6:
+                    day_name = day_names[day_type]
+                    schedule[day_name] = self._format_day_schedule(day_data)
+
+            if schedule:
+                attrs["schedule"] = schedule
+
+        return attrs
+
+    @staticmethod
     def map_mode_hass_eph(operation_mode):
         """Map from Home Assistant mode to eph mode."""
         return getattr(ZoneMode, HA_STATE_TO_EPH.get(operation_mode), None)
