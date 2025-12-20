@@ -408,13 +408,21 @@ class EphEmberThermostat(ClimateEntity):
 
     @staticmethod
     def _time_units_to_hhmm(time_units: int) -> str:
-        """Convert 10-minute units since midnight to HH:MM (wrap to 24h clock)."""
+        """
+        Convert schedule time format to HH:MM.
+        The API uses a format where the integer represents HHMM where the last digit
+        is 10-minute units. For example: 90 = 09:00, 100 = 10:00, 173 = 17:30.
+        This matches the scheduletime_to_time function in pyephember2.
+        """
         if time_units is None or time_units < 0:
             return "00:00"
-        total_minutes = time_units * 10
-        # Fold into a single 24-hour day to avoid times like 31:40
-        minutes_in_day = total_minutes % (24 * 60)
-        hours, minutes = divmod(minutes_in_day, 60)
+        # Convert to string to extract digits
+        time_str = str(time_units)
+        if len(time_str) == 0:
+            return "00:00"
+        # Last digit is 10-minute units, rest is hours
+        hours = int(time_str[:-1]) if len(time_str) > 1 else 0
+        minutes = 10 * int(time_str[-1])
         return f"{hours:02d}:{minutes:02d}"
 
     @staticmethod

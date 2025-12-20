@@ -57,25 +57,38 @@ Each `deviceDays[x]` entry defines **up to 3 schedule periods**: `p1`, `p2`, `p3
 
 ### Time Encoding
 
-**startTime** and **endTime** are encoded as:
+**startTime** and **endTime** are encoded as integers where:
+- The **last digit** represents 10-minute units (0-5, meaning 0, 10, 20, 30, 40, 50 minutes)
+- The **remaining digits** represent hours
 
+This format is similar to HHMM where the last digit is in 10-minute increments.
+
+**Conversion formula:**
 ```
-minutes_since_midnight / 10
+hours = int(str(time_value)[:-1]) if len(str(time_value)) > 1 else 0
+minutes = 10 * int(str(time_value)[-1])
 ```
 
 Examples:
 
-| Time | Encoded value |
-|-----|--------------|
-| 07:00 | 42 |
-| 08:20 | 50 |
-| 10:00 | 60 |
-| 10:10 | 61 |
-| 19:00 | 114 |
-| 19:10 | 115 |
-| 23:50 | 143 |
+| Time | Encoded value | Explanation |
+|-----|--------------|-------------|
+| 06:30 | 63 | 6 hours, 3 × 10 = 30 minutes |
+| 07:00 | 70 | 7 hours, 0 × 10 = 0 minutes |
+| 07:40 | 74 | 7 hours, 4 × 10 = 40 minutes |
+| 08:20 | 82 | 8 hours, 2 × 10 = 20 minutes |
+| 09:00 | 90 | 9 hours, 0 × 10 = 0 minutes |
+| 10:00 | 100 | 10 hours, 0 × 10 = 0 minutes |
+| 10:10 | 101 | 10 hours, 1 × 10 = 10 minutes |
+| 12:00 | 120 | 12 hours, 0 × 10 = 0 minutes |
+| 17:30 | 173 | 17 hours, 3 × 10 = 30 minutes |
+| 19:00 | 190 | 19 hours, 0 × 10 = 0 minutes |
+| 19:10 | 191 | 19 hours, 1 × 10 = 10 minutes |
+| 22:00 | 220 | 22 hours, 0 × 10 = 0 minutes |
+| 23:20 | 232 | 23 hours, 2 × 10 = 20 minutes |
+| 23:50 | 235 | 23 hours, 5 × 10 = 50 minutes |
 
-> ⚠️ The UI only allows **10‑minute steps**. Values are always multiples of 10 minutes.
+> ⚠️ The UI only allows **10‑minute steps**. Values are always multiples of 10 minutes, which matches this encoding format.
 
 ---
 
