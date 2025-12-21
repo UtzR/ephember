@@ -7,6 +7,7 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -52,6 +53,7 @@ class EphemberSetpointSwitch(RestoreEntity, SwitchEntity):
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:thermostat"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, data: Any, ember: Any, zone: dict[str, Any], entry: EphemberConfigEntry) -> None:
         """Initialize the setpoint modification switch."""
