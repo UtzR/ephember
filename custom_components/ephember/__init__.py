@@ -189,7 +189,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
     # Set up MQTT callbacks
     ember.set_mqtt_pointdata_callback(on_mqtt_pointdata)
     ember.set_mqtt_log_callback(on_mqtt_log)
-    ember.set_on_message_callback(on_mqtt_message)  # For raw message tracking
+    # Access messenger directly to set raw message callback
+    if hasattr(ember, 'messenger') and ember.messenger:
+        ember.messenger.set_on_message_callback(on_mqtt_message)
     
     # Start MQTT listener
     try:
