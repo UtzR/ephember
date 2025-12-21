@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime, timezone
+import json
 from typing import TYPE_CHECKING, Any
 
 from .pyephember2.pyephember2 import EphEmber
@@ -12,6 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
 
@@ -39,6 +42,13 @@ class EphemberData:
         self.last_http_request: datetime | None = None
         self.mqtt_connected: bool = False
         self.system_type: str | None = None
+        # Track last 5 MQTT messages received and sent
+        self.recent_mqtt_messages_received: deque = deque(maxlen=5)
+        self.recent_mqtt_messages_sent: deque = deque(maxlen=5)
+        # Track last HTTP zones data (list of homes, each containing zones)
+        self.last_http_zones_data: list[dict[str, Any]] | None = None
+        # Cache for raw MQTT messages (mac -> {topic, raw_payload})
+        self._raw_mqtt_message_cache: dict[str, dict[str, Any]] = {}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> bool:
@@ -62,6 +72,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
 
     # Update HTTP request timestamp for initial request
     data.last_http_request = datetime.now(timezone.utc)
+    # Store HTTP zones data
+    data.last_http_zones_data = homes
     
     # Build MAC to zone_id mapping
     for home in homes:
@@ -74,11 +86,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
             if data.system_type is None and zone.get("systemType"):
                 data.system_type = zone.get("systemType")
 
+    # Create main device in device registry
+    device_registry = dr.async_get(hass)
+    main_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="EPH Controls Ember",
+        manufacturer="EPH Controls",
+        model=data.system_type if data.system_type else "Ember System",
+    )
+
     # Set up MQTT callbacks
+    def on_mqtt_message(topic: str, msg_dict: dict[str, Any]) -> None:
+        """Handle raw MQTT messages for diagnostics tracking."""
+        # Extract MAC if available
+        mac = msg_dict.get('data', {}).get('mac')
+        if mac:
+            # Store raw message data for pointdata callback
+            data._raw_mqtt_message_cache[mac] = {
+                'topic': topic,
+                'raw_payload': json.dumps(msg_dict),
+            }
+    
     def on_mqtt_pointdata(mac: str, parsed_pointdata: dict) -> None:
         """Handle MQTT pointdata updates."""
         data.last_mqtt_received = datetime.now(timezone.utc)
         data.mqtt_connected = True
+        
+        # Store received message for diagnostics
+        raw_msg_data = data._raw_mqtt_message_cache.pop(mac, {})
+        if raw_msg_data:
+            data.recent_mqtt_messages_received.append({
+                'timestamp': data.last_mqtt_received,
+                'topic': raw_msg_data.get('topic', 'unknown'),
+                'raw_payload': raw_msg_data.get('raw_payload', ''),
+                'decoded_data': parsed_pointdata,  # Human-readable pointdata
+                'mac': mac,
+            })
         
         zone_id = data.mac_to_zone_id.get(mac)
         if zone_id and zone_id in data.zone_id_to_entity:
@@ -98,6 +142,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
         if direction == "SEND":
             data.last_mqtt_sent = datetime.now(timezone.utc)
             data.mqtt_connected = True
+            
+            # Parse log content to extract topic and payload
+            # Format: "Topic: {topic}\nPayload: {payload}"
+            try:
+                lines = content.split('\n')
+                topic = None
+                payload = None
+                mac = None
+                
+                for line in lines:
+                    if line.startswith('Topic: '):
+                        topic = line[7:].strip()
+                    elif line.startswith('Payload: '):
+                        payload = line[9:].strip()
+                
+                # Try to extract MAC from payload if it's JSON
+                if payload:
+                    try:
+                        payload_dict = json.loads(payload)
+                        mac = payload_dict.get('data', {}).get('mac')
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+                
+                # Store sent message for diagnostics
+                if topic and payload:
+                    data.recent_mqtt_messages_sent.append({
+                        'timestamp': data.last_mqtt_sent,
+                        'topic': topic,
+                        'raw_payload': payload,
+                        'mac': mac,
+                    })
+            except Exception as err:
+                _LOGGER.debug("Error parsing MQTT log content for diagnostics: %s", err)
 
     def on_mqtt_connect(client, userdata, flags, rc, properties=None) -> None:
         """Handle MQTT connection."""
@@ -112,6 +189,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
     # Set up MQTT callbacks
     ember.set_mqtt_pointdata_callback(on_mqtt_pointdata)
     ember.set_mqtt_log_callback(on_mqtt_log)
+    ember.set_on_message_callback(on_mqtt_message)  # For raw message tracking
     
     # Start MQTT listener
     try:

@@ -406,11 +406,12 @@ class EphEmberThermostat(ClimateEntity):
     def update(self) -> None:
         """Get the latest data."""
         try:
-            self._ember.get_zones()
+            homes = self._ember.get_zones()
             self._zone = self._ember.get_zone(self._zone_id)
-            # Update HTTP request timestamp
+            # Update HTTP request timestamp and store zones data
             if self._data:
                 self._data.last_http_request = datetime.now(timezone.utc)
+                self._data.last_http_zones_data = homes
         except requests.exceptions.Timeout as err:
             _LOGGER.debug("Timeout updating zone %s: %s", self._zone_name, err)
         except requests.exceptions.RequestException as err:
