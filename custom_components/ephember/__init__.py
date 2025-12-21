@@ -17,7 +17,7 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.SENSOR, Platform.SWITCH]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -33,6 +33,7 @@ class EphemberData:
         self.ember = ember
         self.mac_to_zone_id: dict[str, str] = {}
         self.zone_id_to_entity: dict[str, Any] = {}
+        self.zone_id_to_switch: dict[str, Any] = {}
         self.last_mqtt_sent: datetime | None = None
         self.last_mqtt_received: datetime | None = None
         self.last_http_request: datetime | None = None

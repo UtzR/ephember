@@ -258,6 +258,17 @@ class EphEmberThermostat(ClimateEntity):
         mode = zone_mode(self._zone)
         return self.map_mode_eph_hass(mode)
 
+    def _is_setpoint_modification_enabled(self) -> bool:
+        """Check if setpoint modification is enabled via the switch entity."""
+        if not self._data:
+            return True  # Default to enabled for backward compatibility
+        
+        switch = self._data.zone_id_to_switch.get(self._zone_id)
+        if switch is None:
+            return True  # Default to enabled if switch doesn't exist
+        
+        return switch.is_on
+
     def _call_mqtt_with_resync(self, send_func: Callable[[str], bool]) -> bool:
         """Call a MQTT action; on Unknown zone, resync HTTP and retry once."""
         try:
@@ -345,7 +356,8 @@ class EphEmberThermostat(ClimateEntity):
         if (temperature := kwargs.get(ATTR_TEMPERATURE)) is None:
             return
 
-        if self._hot_water:
+        # Check if setpoint modification is enabled via switch
+        if not self._is_setpoint_modification_enabled():
             return
 
         if temperature == self.target_temperature:
@@ -367,17 +379,18 @@ class EphEmberThermostat(ClimateEntity):
     @property
     def min_temp(self) -> float:
         """Return the minimum temperature."""
-        # Hot water temp doesn't support being changed
-        if self._hot_water:
-            return zone_target_temperature(self._zone)
+        # If setpoint modification is disabled, return current target to disable UI
+        if not self._is_setpoint_modification_enabled():
+            return zone_target_temperature(self._zone) or 5.0
 
         return 5.0
 
     @property
     def max_temp(self) -> float:
         """Return the maximum temperature."""
-        if self._hot_water:
-            return zone_target_temperature(self._zone)
+        # If setpoint modification is disabled, return current target to disable UI
+        if not self._is_setpoint_modification_enabled():
+            return zone_target_temperature(self._zone) or 35.0
 
         return 35.0
 
