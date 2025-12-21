@@ -20,17 +20,14 @@ This integration provides the following enhancements over the [original Home Ass
 - Devices show manufacturer (EPH Controls) and model type
 - Human-readable model names (Thermostat, Hot Water Controller, etc.)
 
-### ✅ Improved State Updates
-- Immediate state refresh after changing preset, mode, or temperature
+### ✅ Improved State Updates and MQTT support
+- State refresh after changing preset, mode, or temperature
 - Clears API cache to ensure fresh data
+- Uses MQTT for improved state synchronization
 
 ### ✅ Network Error Handling
 - Graceful handling of API timeouts and network errors
 - Prevents log spam during temporary connectivity issues
-
-### ✅ pyephember2 Library Bug Fix
-- Fixes a bug in pyephember2 v0.4.12 where `ZoneCommand` is called with missing arguments
-- Monkey-patches the broken `_set_zone_boost` method
 
 ## Installation
 
@@ -77,23 +74,20 @@ climate:
 | Boost mode | ❌ Not supported | ✅ Via preset modes |
 | UI configuration | ❌ YAML only | ✅ Full UI support |
 | Device registry | ❌ Entities only | ✅ Devices with entities |
-| State refresh | ❌ Polling only | ✅ Immediate after changes |
+| State refresh | ❌ Basic polling | ✅ Improved HTTP and MQTT polling with cache management |
 | Error handling | ❌ Basic | ✅ Graceful timeout handling |
-| pyephember2 bug | ❌ Affected | ✅ Fixed via monkey-patch |
 
 ## Requirements
 
-- Home Assistant 2024.1 or newer
-- pyephember2 v0.4.12
+- Home Assistant 2025.1.0 or newer
 
-## Known Issues
+**Note**: This integration uses a modified `pyephember2` library installed within the custom_components folder.
 
-- The pyephember2 library (v0.4.12) has a bug in the boost functionality. This integration includes a workaround, but the upstream library should be fixed.
 
 ## Credits
 
 - Original integration by [@ttroy50](https://github.com/ttroy50)
-- pyephember2 library maintainers
+- pyephember2 library maintainers and [@roberty99](https://github.com/roberty99)
 - Enhanced by [@UtzR](https://github.com/UtzR)
 
 ## License
