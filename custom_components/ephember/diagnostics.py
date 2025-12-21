@@ -15,7 +15,10 @@ TO_REDACT = {"password", "token", "serial"}
 
 
 def _make_json_serializable(obj: Any, visited: set[int] | None = None) -> Any:
-    """Convert object to JSON-serializable format, handling circular references."""
+    """Convert object to JSON-serializable format, handling circular references.
+    
+    Removes Prev/Next fields from schedule data to break circular references.
+    """
     if visited is None:
         visited = set()
     
@@ -30,7 +33,7 @@ def _make_json_serializable(obj: Any, visited: set[int] | None = None) -> Any:
     # Handle circular references by checking object id
     obj_id = id(obj)
     if obj_id in visited:
-        return "<circular reference>"
+        return None  # Return None instead of string for cleaner output
     visited.add(obj_id)
     
     try:
@@ -41,9 +44,15 @@ def _make_json_serializable(obj: Any, visited: set[int] | None = None) -> Any:
             except Exception:
                 return str(obj)
         
-        # Handle dict
+        # Handle dict - remove Prev/Next/Count fields to break circular refs
         if isinstance(obj, dict):
-            return {str(k): _make_json_serializable(v, visited) for k, v in obj.items()}
+            result = {}
+            for k, v in obj.items():
+                # Skip Prev, Next, and Count fields that create circular references
+                if k in ("Prev", "Next", "Count"):
+                    continue
+                result[str(k)] = _make_json_serializable(v, visited)
+            return result
         
         # Handle list/tuple
         if isinstance(obj, (list, tuple)):
