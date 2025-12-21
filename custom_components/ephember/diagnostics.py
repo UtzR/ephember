@@ -11,13 +11,14 @@ from homeassistant.helpers.device_registry import DeviceEntry
 from . import EphemberConfigEntry
 from .const import DOMAIN
 
-TO_REDACT = {"password", "token", "serial"}
+TO_REDACT = {"password", "token", "serial", "name", "invitecode", "gatewayid"}
 
 
 def _make_json_serializable(obj: Any, visited: set[int] | None = None) -> Any:
     """Convert object to JSON-serializable format, handling circular references.
     
     Removes Prev/Next fields from schedule data to break circular references.
+    Also removes 'days' field as it's a duplicate of 'deviceDays' (created by pyephember2).
     """
     if visited is None:
         visited = set()
@@ -45,11 +46,16 @@ def _make_json_serializable(obj: Any, visited: set[int] | None = None) -> Any:
                 return str(obj)
         
         # Handle dict - remove Prev/Next/Count fields to break circular refs
+        # Also remove 'days' field as it's a duplicate of 'deviceDays' created by pyephember2
         if isinstance(obj, dict):
             result = {}
             for k, v in obj.items():
                 # Skip Prev, Next, and Count fields that create circular references
                 if k in ("Prev", "Next", "Count"):
+                    continue
+                # Skip 'days' field - it's a duplicate of 'deviceDays' created by pyephember2
+                # 'deviceDays' is the original format from the HTTP API
+                if k == "days":
                     continue
                 result[str(k)] = _make_json_serializable(v, visited)
             return result
@@ -106,6 +112,7 @@ async def async_get_device_diagnostics(
             "timestamp": msg.get("timestamp").isoformat() if msg.get("timestamp") else None,
             "topic": msg.get("topic", "unknown"),
             "raw_payload": msg.get("raw_payload", ""),
+            "decoded_data": _make_json_serializable(msg.get("decoded_data", {})),
             "mac": msg.get("mac"),
         })
     

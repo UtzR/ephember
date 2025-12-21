@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import json
 from typing import TYPE_CHECKING, Any
 
-from .pyephember2.pyephember2 import EphEmber
+from .pyephember2.pyephember2 import EphEmber, decode_point_data
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -157,11 +157,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
                     elif line.startswith('Payload: '):
                         payload = line[9:].strip()
                 
-                # Try to extract MAC from payload if it's JSON
+                # Try to extract MAC and decode pointData from payload if it's JSON
+                decoded_data = {}
                 if payload:
                     try:
                         payload_dict = json.loads(payload)
                         mac = payload_dict.get('data', {}).get('mac')
+                        # Decode pointData if present
+                        pointdata_b64 = payload_dict.get('data', {}).get('pointData')
+                        if pointdata_b64:
+                            try:
+                                decoded_data = decode_point_data(pointdata_b64)
+                            except Exception as decode_err:
+                                _LOGGER.debug("Error decoding pointData for sent message: %s", decode_err)
+                                decoded_data = {}
                     except (json.JSONDecodeError, AttributeError):
                         pass
                 
@@ -171,6 +180,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
                         'timestamp': data.last_mqtt_sent,
                         'topic': topic,
                         'raw_payload': payload,
+                        'decoded_data': decoded_data,  # Human-readable pointdata
                         'mac': mac,
                     })
             except Exception as err:
