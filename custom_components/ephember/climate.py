@@ -260,6 +260,10 @@ class EphEmberThermostat(ClimateEntity):
 
     def _is_setpoint_modification_enabled(self) -> bool:
         """Check if setpoint modification is enabled via the switch entity."""
+        # Hot Water Controllers never have setpoint modification enabled
+        if self._hot_water:
+            return False
+        
         if not self._data:
             return True  # Default to enabled for backward compatibility
         

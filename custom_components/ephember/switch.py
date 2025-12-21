@@ -35,10 +35,12 @@ async def async_setup_entry(
         _LOGGER.error("Failed to get zones from EPH Controls")
         return
 
+    # Only create switches for non-Hot Water Controllers (Thermostats, etc.)
     entities = [
         EphemberSetpointSwitch(data, ember, zone, entry)
         for home in homes
         for zone in home["zones"]
+        if not zone_is_hotwater(zone)
     ]
     
     # Register switches in data structure for climate entities to access
