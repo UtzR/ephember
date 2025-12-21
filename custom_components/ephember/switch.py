@@ -69,8 +69,8 @@ class EphemberSetpointSwitch(RestoreEntity, SwitchEntity):
         # Set name to "Device name + Setpoint Control" (e.g., "Hot Water Setpoint Control")
         self._attr_name = f"{self._zone_name} Setpoint Control"
         
-        # Default to enabled (True) for all zones
-        self._attr_is_on = True
+        # Default to enabled (True) for thermostats, disabled (False) for Hot Water Controllers
+        self._attr_is_on = not self._hot_water
 
         # Device info - links to the same device as the climate entity
         self._attr_device_info = DeviceInfo(
@@ -83,16 +83,26 @@ class EphemberSetpointSwitch(RestoreEntity, SwitchEntity):
         """Handle entity which will be added to hass."""
         await super().async_added_to_hass()
         
-        # Restore the last state
+        # Restore the last state (but force False for Hot Water Controllers)
         if (last_state := await self.async_get_last_state()) is not None:
             if last_state.state not in ("unknown", "unavailable"):
-                self._attr_is_on = last_state.state == "on"
+                if not self._hot_water:
+                    # Only restore state for non-hot-water controllers
+                    self._attr_is_on = last_state.state == "on"
+        
+        # Force Hot Water Controllers to always be off
+        if self._hot_water:
+            self._attr_is_on = False
         
         # Notify climate entity of state change
         self._notify_climate_entity()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on setpoint modification."""
+        # Hot Water Controllers cannot have setpoint modification enabled
+        if self._hot_water:
+            return
+        
         self._attr_is_on = True
         self.async_write_ha_state()
         self._notify_climate_entity()
