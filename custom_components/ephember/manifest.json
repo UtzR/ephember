@@ -4,7 +4,7 @@
   "name": "EPH Controls Ember",
   "codeowners": ["@ttroy50", "@roberty99", "@UtzR"],
   "config_flow": true,
-  "documentation": "https://github.com/UtzR/ephember/blob/mqtt/README.md",
+  "documentation": "https://github.com/UtzR/ephember/blob/main/README.md",
   "issue_tracker": "https://github.com/UtzR/ephember/issues",
   "iot_class": "cloud_push",
   "loggers": ["pyephember2"]
