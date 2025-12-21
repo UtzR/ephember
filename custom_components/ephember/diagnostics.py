@@ -11,7 +11,7 @@ from homeassistant.helpers.device_registry import DeviceEntry
 from . import EphemberConfigEntry
 from .const import DOMAIN
 
-TO_REDACT = {"password", "token", "serial", "name", "invitecode", "gatewayid"}
+TO_REDACT = {"password", "token", "serial", "invitecode", "gatewayid"}
 
 
 def _make_json_serializable(obj: Any, visited: set[int] | None = None) -> Any:
