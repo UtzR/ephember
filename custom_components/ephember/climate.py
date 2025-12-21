@@ -390,9 +390,14 @@ class EphEmberThermostat(ClimateEntity):
         """Return the maximum temperature."""
         # If setpoint modification is disabled, return current target to disable UI
         if not self._is_setpoint_modification_enabled():
-            return zone_target_temperature(self._zone) or 35.0
+            current_target = zone_target_temperature(self._zone)
+            if current_target is not None:
+                return current_target
+            # Fallback based on device type
+            return 60.0 if self._hot_water else 35.0
 
-        return 35.0
+        # Hot Water Controllers: 60°C, Thermostats: 35°C
+        return 60.0 if self._hot_water else 35.0
 
     def update(self) -> None:
         """Get the latest data."""

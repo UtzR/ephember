@@ -51,7 +51,6 @@ class EphemberSetpointSwitch(RestoreEntity, SwitchEntity):
     """Representation of a setpoint modification switch for an EPH Controls Ember zone."""
 
     _attr_has_entity_name = True
-    _attr_translation_key = "setpoint_modification"
     _attr_icon = "mdi:thermostat"
 
     def __init__(self, data: Any, ember: Any, zone: dict[str, Any], entry: EphemberConfigEntry) -> None:
@@ -64,6 +63,9 @@ class EphemberSetpointSwitch(RestoreEntity, SwitchEntity):
         self._zone_id = zone["zoneid"]
         self._hot_water = zone_is_hotwater(zone)
         self._attr_unique_id = f"{self._zone_id}_setpoint_enabled"
+        
+        # Set name to "Device name + Setpoint Control" (e.g., "Hot Water Setpoint Control")
+        self._attr_name = f"{self._zone_name} Setpoint Control"
         
         # Default to enabled (True) for all zones
         self._attr_is_on = True
