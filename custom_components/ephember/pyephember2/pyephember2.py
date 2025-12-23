@@ -114,8 +114,6 @@ def GetPointIndex(zone, pointIndex) -> int:
             match zone['deviceType']:
                 case 514 | 773:
                     return 11
-                case 2 | 4:
-                    return 7
                 case _:
                     return 7
         case PointIndex.BOOST_HOURS:
@@ -389,7 +387,7 @@ def zone_is_scheduled_on(zone):
     return False
 
 # Hot water devices - no temperature control
-HotWaterDevices = [4, 514]
+HotWaterDevices = [4]
 
 def zone_is_hotwater(zone):
     if zone["deviceType"] in HotWaterDevices:
@@ -446,11 +444,7 @@ def zone_target_temperature(zone):
     """
     Get target temperature for this zone
     """
-    match zone["deviceType"]:
-        case 514:
-            return None
-        case _:
-            return zone_temperature(zone, PointIndex.TARGET_TEMP)
+    return zone_temperature(zone, PointIndex.TARGET_TEMP)
 
 def zone_boost_temperature(zone):
     """
@@ -463,11 +457,7 @@ def zone_current_temperature(zone):
     """
     Get current temperature for this zone
     """
-    match zone["deviceType"]:
-        case 514:
-            return None
-        case _:
-            return zone_temperature(zone, PointIndex.CURRENT_TEMP)
+    return zone_temperature(zone, PointIndex.CURRENT_TEMP)
 
 
 def zone_pointdata_value(zone, pointIndex):
@@ -527,18 +517,20 @@ def zone_mode(zone):
             return ZoneMode.OFF
 
 def get_zone_mode_value(zone, mode) -> int:
-    if mode == ZoneMode.AUTO:
-        return 0
-
+    
     match zone['deviceType']:
         case 773:
             match mode:
+                case ZoneMode.AUTO:
+                    return 0
                 case ZoneMode.ON:
                     return 1
                 case ZoneMode.OFF:
                     return 4
         case 514:
             match mode:
+                case ZoneMode.AUTO:
+                    return 0
                 case ZoneMode.ALL_DAY:
                     return 9
                 case ZoneMode.ON:
@@ -547,12 +539,15 @@ def get_zone_mode_value(zone, mode) -> int:
                     return 4
         case _:
             match mode:
+                case ZoneMode.AUTO:
+                    return 0
                 case ZoneMode.ALL_DAY:
                     return 1
                 case ZoneMode.ON:
                     return 2
                 case ZoneMode.OFF:
                     return 3
+    return None
 
 
 class EphMessenger:

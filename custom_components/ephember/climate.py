@@ -201,9 +201,9 @@ class EphEmberThermostat(ClimateEntity):
     def _get_device_model(device_type: int | None) -> str:
         """Get human-readable model name from device type code."""
         device_models = {
-            2: "Thermostat",
-            4: "Hot Water Controller",
-            514: "Hot Water Controller",
+            2: "Thermostat (v1)",
+            4: "Hot Water Controller (v1)",
+            514: "Thermostat (v2)",
             773: "Thermostatic Radiator Valve",
         }
         return device_models.get(device_type, f"Unknown ({device_type})")
