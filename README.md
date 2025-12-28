@@ -76,12 +76,12 @@ climate:
 | EMBER-PS2 | ❓   |  ✅         |  ❓        |  ✅   | ❓     | ❌    |       |
 | TRV       | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❓    |       |
 
-Mode: Can switch mode (OFF/HEAT/AUTO)
-Setpoint-R: Can read the setpoint
-Setpoint-W: Can write the setpoint
-Temp-R: Can read the temperature
-Boost: Preset of Boost is working
-Boiler: Boiler state is reported (Idel/Heating)
+- Mode: Can switch mode (OFF/HEAT/AUTO)
+- Setpoint-R: Can read the setpoint
+- Setpoint-W: Can write the setpoint
+- Temp-R: Can read the temperature
+- Boost: Preset of Boost is working
+- Boiler: Boiler state is reported (Idle/Heating)
 
 ## Differences from Core Integration
 
