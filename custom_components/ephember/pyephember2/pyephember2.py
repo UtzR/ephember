@@ -90,7 +90,6 @@ class ZoneMode(Enum):
     Modes that a zone can be set too
     """
 
-    # pylint: disable=invalid-name
     AUTO = 0
     ALL_DAY = 1
     ON = 2
@@ -112,31 +111,28 @@ def GetPointIndex(zone, pointIndex) -> int:
                     return 6
         case PointIndex.MODE:
             match zone['deviceType']:
-                case 514 | 773:
+                case 258 | 514 | 773:
                     return 11
                 case _:
                     return 7
         case PointIndex.BOOST_HOURS:
             match zone["deviceType"]:
-                case 514 | 773:
-                    # Returns 0 if boost is OFF and 1 if ON
+                case 258 | 514 | 773:
                     return 13
                 case _:
                     return 8
         case PointIndex.BOOST_TIME:
-            return 9
+            match zone["deviceType"]:
+                case 258 | 514 | 773:
+                    return 15
+                case _:
+                    return 9
         case PointIndex.BOILER_STATE:
+            # Boiler state is not supported for all devices
+            # TODO: devices 258, 514, 773 have boiler state
             return 10
         case PointIndex.BOOST_TEMP:
             return 14
-        case PointIndex.CTR_15_ABAB:
-            return 15
-        case PointIndex.XXX_16_0000:
-            return 16
-        case PointIndex.CTR_17_ABAB:
-            return 17
-        case PointIndex.CTR_18_0AB7:
-            return 18
         case _:
             RuntimeError('Unknown PointIndex:' + pointIndex)
 
@@ -154,10 +150,7 @@ class PointIndex(Enum):
     BOOST_TIME = 9
     BOILER_STATE = 10
     BOOST_TEMP = 14
-    CTR_15_ABAB = 15
-    XXX_16_0000 = 16
-    CTR_17_ABAB = 17
-    CTR_18_0AB7 = 18
+    
 
 
 # """
@@ -242,7 +235,10 @@ def zone_advance_active(zone):
         case 514:
             # Need to fix, point index or value is not right
             return False
-        case _:
+        case 258:
+            # Need to fix, point index or value is not right
+            return False
+        case _: # All other devices (2, 4)
             return zone_pointdata_value(zone, PointIndex.ADVANCE_ACTIVE) != 0
 
 
@@ -505,21 +501,84 @@ def zone_mode(zone):
     match modeValue:
         case 0:
             return ZoneMode.AUTO
-        case 1 | 9:
+        case 1:
             match zone["deviceType"]:
+                case 2:
+                    return ZoneMode.ALL_DAY
+                case 4:
+                    return ZoneMode.ALL_DAY
+                case 258:
+                    return ZoneMode.ON
                 case 773:
                     return ZoneMode.ON
                 case _:
+                    raise RuntimeError(
+                        f"Unhandled deviceType {zone['deviceType']} for modeValue 1. "
+                        f"Expected deviceType: 2, 4, 258, or 773"
+                    )
+        case 2:
+            match zone["deviceType"]:
+                case 2:
+                    return ZoneMode.ON
+                case 4:
+                    return ZoneMode.ON
+                case _:
+                    raise RuntimeError(
+                        f"Unhandled deviceType {zone['deviceType']} for modeValue 2. "
+                        f"Expected deviceType: 2 or 4"
+                    )
+        case 3:
+            match zone["deviceType"]:
+                case 2:
+                    return ZoneMode.OFF
+                case 4:
+                    return ZoneMode.OFF
+                case _:
+                    raise RuntimeError(
+                        f"Unhandled deviceType {zone['deviceType']} for modeValue 3. "
+                        f"Expected deviceType: 2 or 4"
+                    )
+        case 4:
+            match zone["deviceType"]:
+                case 258:
+                    return ZoneMode.OFF
+                case 514:
+                    return ZoneMode.OFF
+                case 773:
+                    return ZoneMode.OFF
+                case _:
+                    raise RuntimeError(
+                        f"Unhandled deviceType {zone['deviceType']} for modeValue 4. "
+                        f"Expected deviceType: 258, 514, or 773"
+                    )
+        case 9:
+            match zone["deviceType"]:
+                case 514:
                     return ZoneMode.ALL_DAY
-        case 2 | 10:
-            return ZoneMode.ON
-        case 3 | 4:
-            return ZoneMode.OFF
+                case _:
+                    raise RuntimeError(
+                        f"Unhandled deviceType {zone['deviceType']} for modeValue 9. "
+                        f"Expected deviceType: 514"
+                    )
+        case 10:
+            match zone["deviceType"]:
+                case 514:
+                    return ZoneMode.ON
+                case _:
+                    raise RuntimeError(
+                        f"Unhandled deviceType {zone['deviceType']} for modeValue 10. "
+                        f"Expected deviceType: 514"
+                    )
+        case _:
+            raise RuntimeError(
+                f"Unknown modeValue {modeValue} for zone (deviceType: {zone.get('deviceType', 'unknown')}). "
+                f"Expected modeValue: 0, 1, 2, 3, 4, 9, or 10"
+            )
 
 def get_zone_mode_value(zone, mode) -> int:
     
     match zone['deviceType']:
-        case 773:
+        case 773 | 258:
             match mode:
                 case ZoneMode.AUTO:
                     return 0
@@ -527,6 +586,11 @@ def get_zone_mode_value(zone, mode) -> int:
                     return 1
                 case ZoneMode.OFF:
                     return 4
+                case _:
+                    raise RuntimeError(
+                        f"Unhandled ZoneMode {mode} for deviceType {zone['deviceType']}. "
+                        f"Expected modes: AUTO, ON, or OFF"
+                    )
         case 514:
             match mode:
                 case ZoneMode.AUTO:
@@ -537,6 +601,11 @@ def get_zone_mode_value(zone, mode) -> int:
                     return 10
                 case ZoneMode.OFF:
                     return 4
+                case _:
+                    raise RuntimeError(
+                        f"Unhandled ZoneMode {mode} for deviceType {zone['deviceType']}. "
+                        f"Expected modes: AUTO, ALL_DAY, ON, or OFF"
+                    )
         case _:
             match mode:
                 case ZoneMode.AUTO:
@@ -547,7 +616,11 @@ def get_zone_mode_value(zone, mode) -> int:
                     return 2
                 case ZoneMode.OFF:
                     return 3
-    return None
+                case _:
+                    raise RuntimeError(
+                        f"Unhandled ZoneMode {mode} for deviceType {zone['deviceType']}. "
+                        f"Expected modes: AUTO, ALL_DAY, ON, or OFF"
+                    )
 
 
 class EphMessenger:

@@ -60,22 +60,24 @@ climate:
 
 ## Supported Device Types
 
-| Device Type | Model Name |
-|-------------|------------|
-| 2 | Thermostat |
-| 4 | Hot Water Controller |
-| 514 | Hot Water Controller |
-| 773 | Thermostatic Radiator Valve |
+| deviceType | Description | Product                           |  Name     |  
+|------------|-------------|-----------------------------------|-----------|
+| 2          | Thermostat  | Thermostat on an RX7-RF           | EMBER-PS  | 
+| 4          | Hot Water   | Hot Water Controller on an RX7-RF | EMBER-PS  |
+| 258        | Thermostat  | Thermostat on an RF1A-OT          | EMBER-TS2 |
+| 514        | Thermostat  | Thermostat on an RX7-RF-V2        | EMBER-PS2 |
+| 773        | TRV         | TRV on an RF16?                   | ???       |
+
+
+| Name      | Comment    
+|-----------|--------------|
+| EMBER-PS  | Working: Mode switching (on/off/auto); setting setpoint; reporting temp and setpoint; boost on/off; reporting boiler state | 
+| EMBER-TS2 | Needs testing: Mode switching (on/off/auto); setting setpoint; reporting temp and setpoint; boost on/off; reporting boiler state | 
+| EMBER-PS2 | Working: reporting temp and setpoint; Needs testing: Mode switching (on/off/auto); setting setpoint; reporting boiler state | 
 
 ## Differences from Core Integration
 
-| Feature | Core Integration | This Integration |
-|---------|-----------------|------------------|
-| Boost mode | ❌ Not supported | ✅ Via preset modes |
-| UI configuration | ❌ YAML only | ✅ Full UI support |
-| Device registry | ❌ Entities only | ✅ Devices with entities |
-| State refresh | ❌ Basic polling | ✅ Improved HTTP and MQTT polling with cache management |
-| Error handling | ❌ Basic | ✅ Graceful timeout handling |
+A larger number of EPH devices are supported. MQTT communication is added. UI configuration is added. 
 
 ## Requirements
 

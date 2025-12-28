@@ -75,14 +75,14 @@ _LOGGER = logging.getLogger(__name__)
 # Default scan interval (will be overridden by config)
 SCAN_INTERVAL = timedelta(seconds=300)
 
-OPERATION_LIST = [HVACMode.HEAT_COOL, HVACMode.HEAT, HVACMode.OFF]
+OPERATION_LIST = [HVACMode.AUTO, HVACMode.HEAT, HVACMode.OFF]
 
 PLATFORM_SCHEMA = CLIMATE_PLATFORM_SCHEMA.extend(
     {vol.Required(CONF_USERNAME): cv.string, vol.Required(CONF_PASSWORD): cv.string}
 )
 
 EPH_TO_HA_STATE = {
-    "AUTO": HVACMode.HEAT_COOL,
+    "AUTO": HVACMode.AUTO,
     "ON": HVACMode.HEAT,
     "OFF": HVACMode.OFF,
 }
@@ -512,5 +512,5 @@ class EphEmberThermostat(ClimateEntity):
     def map_mode_eph_hass(operation_mode):
         """Map from eph mode to Home Assistant mode."""
         if operation_mode is None:
-            return HVACMode.HEAT_COOL
-        return EPH_TO_HA_STATE.get(operation_mode.name, HVACMode.HEAT_COOL)
+            return HVACMode.AUTO
+        return EPH_TO_HA_STATE.get(operation_mode.name, HVACMode.AUTO)
