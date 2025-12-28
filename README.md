@@ -60,20 +60,28 @@ climate:
 
 ## Supported Device Types
 
-| deviceType | Description | Product                           |  Name     |  
-|------------|-------------|-----------------------------------|-----------|
-| 2          | Thermostat  | Thermostat on an RX7-RF           | EMBER-PS  | 
-| 4          | Hot Water   | Hot Water Controller on an RX7-RF | EMBER-PS  |
-| 258        | Thermostat  | Thermostat on an RF1A-OT          | EMBER-TS2 |
-| 514        | Thermostat  | Thermostat on an RX7-RF-V2        | EMBER-PS2 |
-| 773        | TRV         | TRV on an RF16?                   | ???       |
+| deviceType | Description | Product                                 |  Name     |  
+|------------|-------------|-----------------------------------------|-----------|
+| 2          | Thermostat  | Thermostat (RFR) on an RX7-RF           | EMBER-PS  | 
+| 4          | Hot Water   | Hot Water (RFC) Controller on an RX7-RF | EMBER-PS  |
+| 258        | Thermostat  | Thermostat (RFRP-OT) on an RF1A-OT      | EMBER-TS2 |
+| 514        | Thermostat  | Thermostat (RFR-v2) on an RX7-RF-V2     | EMBER-PS2 |
+| 773        | TRV         | TRV (eTRV) on an RF16?                  | ??? (TRV) |
 
 
-| Name      | Comment    
-|-----------|--------------|
-| EMBER-PS  | Working: Mode switching (on/off/auto); setting setpoint; reporting temp and setpoint; boost on/off; reporting boiler state | 
-| EMBER-TS2 | Needs testing: Mode switching (on/off/auto); setting setpoint; reporting temp and setpoint; boost on/off; reporting boiler state | 
-| EMBER-PS2 | Working: reporting temp and setpoint; Needs testing: Mode switching (on/off/auto); setting setpoint; reporting boiler state | 
+| Name      | Mode | Setpoint-R | Setpoint-W | Temp-R| Boost | Boiler| Comment    
+|-----------|----- |------------|------------|-------|-------|-------|-------|
+| EMBER-PS  | ✅   |  ✅         |  ✅        |  ✅   | ✅     | ✅    |       |
+| EMBER-TS2 | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❌    |       |
+| EMBER-PS2 | ❓   |  ✅         |  ❓        |  ✅   | ❓     | ❌    |       |
+| TRV       | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❓    |       |
+
+Mode: Can switch mode (OFF/HEAT/AUTO)
+Setpoint-R: Can read the setpoint
+Setpoint-W: Can write the setpoint
+Temp-R: Can read the temperature
+Boost: Preset of Boost is working
+Boiler: Boiler state is reported (Idel/Heating)
 
 ## Differences from Core Integration
 
