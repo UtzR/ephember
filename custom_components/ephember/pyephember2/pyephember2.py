@@ -98,39 +98,57 @@ class ZoneMode(Enum):
 
 def GetPointIndex(zone, pointIndex) -> int:
     assert isinstance(pointIndex, PointIndex)
+    
+    # Extract device type once at the top (needed for multiple cases)
+    device_type = zone["deviceType"]
+    
     match pointIndex:
         case PointIndex.ADVANCE_ACTIVE:
             return 4
         case PointIndex.CURRENT_TEMP:
             return 5
         case PointIndex.TARGET_TEMP:
-            match zone["deviceType"]:
-                case 773:
-                    return 12
-                case _:
+            # Only call zone_mode when we need it (for deviceType 258)
+            # This avoids circular dependency since zone_mode needs GetPointIndex for MODE
+            match device_type:
+                case 258:
+                    current_mode = zone_mode(zone)
+                    # deviceType 258: AUTO mode uses index 17, ON/MANUAL/OFF uses index 12
+                    if current_mode == ZoneMode.AUTO:
+                        return 17  # Setpoint (Auto Mode)
+                    else:
+                        return 12  # Setpoint (Man Mode)
+                case 514 | 773:
+                    # deviceType 514, 773: Manual mode uses index 12
+                    # For AUTO mode, setpoint comes from schedule, but we use 12 for setting
+                    return 12  # Manual Mode Setpoint
+                case _:  # deviceType 2, 4
+                    # These devices use index 6 for all modes
                     return 6
         case PointIndex.MODE:
-            match zone['deviceType']:
+            match device_type:
                 case 258 | 514 | 773:
                     return 11
                 case _:
                     return 7
         case PointIndex.BOOST_HOURS:
-            match zone["deviceType"]:
+            match device_type:
                 case 258 | 514 | 773:
                     return 13
                 case _:
                     return 8
         case PointIndex.BOOST_TIME:
-            match zone["deviceType"]:
+            match device_type:
                 case 258 | 514 | 773:
                     return 15
                 case _:
                     return 9
         case PointIndex.BOILER_STATE:
-            # Boiler state is not supported for all devices
-            # TODO: devices 258, 514, 773 have boiler state
-            return 10
+            match device_type:
+                case 258 | 514:
+                    return 18
+                case _:
+                    return 10
         case PointIndex.BOOST_TEMP:
             return 14
         case _:
@@ -245,8 +263,7 @@ def zone_advance_active(zone):
 def boiler_state(zone):
     """
     Return the boiler state for a zone, as given by the API
-    Probable interpretation:
-    0 => FIXME, 1 => flame off, 2 => flame on
+    1 => flame off, 2 => flame on
     """
     return zone_pointdata_value(zone, PointIndex.BOILER_STATE)
 
@@ -1110,9 +1127,10 @@ class EphEmber:
         return self._homes[0]['gatewayid']
 
     def _set_zone_target_temperature(self, zone, target_temperature):
+        targettempindex = GetPointIndex(zone, PointIndex.TARGET_TEMP)
         return self.messenger.send_zone_commands(
             zone,
-            ZoneCommand('TARGET_TEMP', target_temperature, GetPointIndex(zone, PointIndex.TARGET_TEMP))
+            ZoneCommand('TARGET_TEMP', target_temperature, targettempindex)
         )
 
     def _set_zone_boost_temperature(self, zone, target_temperature):
@@ -1153,9 +1171,19 @@ class EphEmber:
             cmds.append(ZoneCommand('BOOST_TIME', timestamp, None))
         return self.messenger.send_zone_commands(zone, cmds)
 
-    def _set_zone_mode(self, zone, mode_num, index):
+    def _set_zone_mode(self, zone, mode):
+        """
+        Internal method to set zone mode.
+        
+        Args:
+            zone: Zone dict
+            mode: ZoneMode enum value
+        """
+        assert isinstance(mode, ZoneMode)
+        modevalue = get_zone_mode_value(zone, mode)
+        modeindex = GetPointIndex(zone, PointIndex.MODE)
         return self.messenger.send_zone_commands(
-            zone, ZoneCommand('MODE', mode_num, index)
+            zone, ZoneCommand('MODE', modevalue, modeindex)
         )
 
     # Public interface
@@ -1468,12 +1496,7 @@ class EphEmber:
         assert isinstance(mode, ZoneMode)
 
         zone = self.get_zone(zoneid)
-        modevalue = get_zone_mode_value(zone, mode)
-        modeindex = GetPointIndex(zone, PointIndex.MODE)
-
-        return self._set_zone_mode(
-            self.get_zone(zoneid), modevalue, modeindex
-        )
+        return self._set_zone_mode(zone, mode)
 
     def get_zone_mode(self, zoneid):
         """
@@ -1565,9 +1588,7 @@ class EphEmber:
         """
         assert isinstance(mode, ZoneMode)
         zone = self.get_zone(zoneid)
-        modevalue = get_zone_mode_value(zone, mode)
-        modeindex = GetPointIndex(zone, PointIndex.MODE)
-        return self._set_zone_mode(zone, modevalue, modeindex)
+        return self._set_zone_mode(zone, mode)
 
     def activate_zone_boost_mqtt(self, zoneid, boost_temperature=None,
                                   num_hours=1, timestamp=0) -> bool:
