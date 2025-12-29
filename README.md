@@ -72,7 +72,7 @@ climate:
 | Name      | Mode | Setpoint-R | Setpoint-W | Temp-R| Boost | Boiler| Comment    
 |-----------|----- |------------|------------|-------|-------|-------|-------|
 | EMBER-PS  | ✅   |  ✅         |  ✅        |  ✅   | ✅     | ✅    |       |
-| EMBER-TS2 | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❌    |       |
+| EMBER-TS2 | ✅   |  ✅         |  ✅        |  ✅   | ❓     | ✅    |       |
 | EMBER-PS2 | ❓   |  ✅         |  ❓        |  ✅   | ❓     | ❌    |       |
 | TRV       | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❓    |       |
 
