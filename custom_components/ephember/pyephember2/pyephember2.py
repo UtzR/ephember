@@ -1127,10 +1127,9 @@ class EphEmber:
         return self._homes[0]['gatewayid']
 
     def _set_zone_target_temperature(self, zone, target_temperature):
-        targettempindex = GetPointIndex(zone, PointIndex.TARGET_TEMP)
         return self.messenger.send_zone_commands(
             zone,
-            ZoneCommand('TARGET_TEMP', target_temperature, targettempindex)
+            ZoneCommand('TARGET_TEMP', target_temperature, None)
         )
 
     def _set_zone_boost_temperature(self, zone, target_temperature):
@@ -1157,7 +1156,7 @@ class EphEmber:
 
         If boost_temperature is not None, send that
 
-        If timestamp is 0 (or omitted), use current timestamp
+        If timestamp is 0 (or omitted), use current timestamp + num_hours
 
         If timestamp is None, do not send timestamp at all.
         (maybe results in permanent boost?)
@@ -1167,7 +1166,7 @@ class EphEmber:
             cmds.append(ZoneCommand('BOOST_TEMP', boost_temperature, None))
         if timestamp is not None:
             if timestamp == 0:
-                timestamp = int(datetime.datetime.now().timestamp())
+                timestamp = int((datetime.datetime.now() + datetime.timedelta(hours=num_hours)).timestamp())
             cmds.append(ZoneCommand('BOOST_TIME', timestamp, None))
         return self.messenger.send_zone_commands(zone, cmds)
 
@@ -1181,9 +1180,8 @@ class EphEmber:
         """
         assert isinstance(mode, ZoneMode)
         modevalue = get_zone_mode_value(zone, mode)
-        modeindex = GetPointIndex(zone, PointIndex.MODE)
         return self.messenger.send_zone_commands(
-            zone, ZoneCommand('MODE', modevalue, modeindex)
+            zone, ZoneCommand('MODE', modevalue, None)
         )
 
     # Public interface
