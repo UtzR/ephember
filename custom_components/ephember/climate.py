@@ -22,29 +22,6 @@ from .pyephember2.pyephember2 import (
 import requests
 import voluptuous as vol
 
-
-def _patched_set_zone_boost(self, zone, boost_temperature, num_hours, timestamp=0):
-    """Patched version of _set_zone_boost that fixes missing index argument.
-    
-    The original pyephember2 library has a bug where ZoneCommand is called
-    with only 2 arguments, but the namedtuple requires 3 (name, value, index).
-    Passing None for index allows zone_command_to_ints to fall back to
-    GetPointIndex() to determine the correct index.
-    """
-    # Fix: Pass None as third argument (index) - the library will use GetPointIndex fallback
-    cmds = [ZoneCommand('BOOST_HOURS', num_hours, None)]
-    if boost_temperature is not None:
-        cmds.append(ZoneCommand('BOOST_TEMP', boost_temperature, None))
-    if timestamp is not None:
-        if timestamp == 0:
-            timestamp = int(datetime.now(timezone.utc).timestamp())
-        cmds.append(ZoneCommand('BOOST_TIME', timestamp, None))
-    return self.messenger.send_zone_commands(zone, cmds)
-
-
-# Monkey-patch the broken method in pyephember2
-EphEmber._set_zone_boost = _patched_set_zone_boost
-
 from homeassistant.components.climate import (
     PLATFORM_SCHEMA as CLIMATE_PLATFORM_SCHEMA,
     ClimateEntity,
