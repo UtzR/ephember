@@ -1152,21 +1152,40 @@ class EphEmber:
         """
         Internal method to set zone boost
 
-        num_hours should be 0, 1, 2 or 3
+        num_hours validation:
+        - For device 258, 514, 773: max 1 hour (clamped if > 1)
+        - For device 2, 4: max 3 hours (clamped if > 3)
 
         If boost_temperature is not None, send that
 
-        If timestamp is 0 (or omitted), use current timestamp + num_hours
+        Timestamp calculation:
+        - For device 258, 514, 773: current timestamp + num_hours (if timestamp=0)
+        - For device 2, 4: current timestamp only (if timestamp=0)
 
         If timestamp is None, do not send timestamp at all.
         (maybe results in permanent boost?)
         """
+        device_type = zone["deviceType"]
+        
+        # Validate and clamp num_hours based on device type
+        if device_type in (258, 514, 773):
+            if num_hours > 1:
+                num_hours = 1
+        else:
+            if num_hours > 3:
+                num_hours = 3
+        
         cmds = [ZoneCommand('BOOST_HOURS', num_hours, None)]
         if boost_temperature is not None:
             cmds.append(ZoneCommand('BOOST_TEMP', boost_temperature, None))
         if timestamp is not None:
             if timestamp == 0:
-                timestamp = int((datetime.datetime.now() + datetime.timedelta(hours=num_hours)).timestamp())
+                if device_type in (258, 514, 773):
+                    # For device 258, 514, 773: current time + num_hours
+                    timestamp = int((datetime.datetime.now() + datetime.timedelta(hours=num_hours)).timestamp())
+                else:
+                    # For device 2, 4: current time only
+                    timestamp = int(datetime.datetime.now().timestamp())
             cmds.append(ZoneCommand('BOOST_TIME', timestamp, None))
         return self.messenger.send_zone_commands(zone, cmds)
 
