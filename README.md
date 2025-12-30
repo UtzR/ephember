@@ -72,9 +72,11 @@ climate:
 | Name      | Mode | Setpoint-R | Setpoint-W | Temp-R| Boost | Boiler| Comment    
 |-----------|----- |------------|------------|-------|-------|-------|-------|
 | EMBER-PS  | ✅   |  ✅         |  ✅        |  ✅   | ✅     | ✅    |       |
-| EMBER-TS2 | ✅   |  ✅         |  ✅        |  ✅   | ❓     | ✅    |       |
-| EMBER-PS2 | ❓   |  ✅         |  ❓        |  ✅   | ❓     | ❌    |       |
+| EMBER-TS2 | ✅   |  ✅         |  ✅        |  ✅   | ✅     | ✅    |       |
+| EMBER-PS2 | ❓   |  ✅         |  ❓        |  ✅   | ❓     | ❓    |       |
 | TRV       | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❓    |       |
+
+✅ This was confirmed to work; ❓ Might work, confirmation needed
 
 - Mode: Can switch mode (OFF/HEAT/AUTO)
 - Setpoint-R: Can read the setpoint
