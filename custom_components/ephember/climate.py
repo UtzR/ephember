@@ -442,13 +442,59 @@ class EphEmberThermostat(ClimateEntity):
         return f"{start_str}-{end_str}"
 
     @staticmethod
-    def _format_day_schedule(day_data: dict[str, Any]) -> dict[str, str | None]:
-        """Format one day's schedule (p1, p2, p3) into a dict."""
-        return {
-            "p1": EphEmberThermostat._format_period(day_data.get("p1", {})),
-            "p2": EphEmberThermostat._format_period(day_data.get("p2", {})),
-            "p3": EphEmberThermostat._format_period(day_data.get("p3", {})),
-        }
+    def _format_period_ts2(period: dict[str, Any]) -> str | None:
+        """Format a single EMBER-TS2 schedule period to 'HH:MM'."""
+        if not period:
+            return None
+        time_value = period.get("time")
+        
+        # Invalid period
+        if time_value is None:
+            return None
+        
+        return EphEmberThermostat._time_units_to_hhmm(time_value)
+
+    @staticmethod
+    def _get_schedule_type(device_type: int | None) -> str:
+        """Get schedule type based on device type."""
+        if device_type == 258:
+            return "EMBER-TS"
+        # deviceType 2, 4, 514 (EMBER-PS/EMBER-PS2) or unknown
+        return "EMBER-PS"
+
+    @staticmethod
+    def _format_day_schedule(day_data: dict[str, Any], device_type: int | None) -> dict[str, Any]:
+        """Format one day's schedule into a dict.
+        
+        For EMBER-TS2 (deviceType 258): formats p1-p6 with time and temperature (t1-t6).
+        For EMBER-PS/EMBER-PS2 (deviceType 2, 4, 514): formats p1-p3 with startTime/endTime.
+        """
+        if device_type == 258:
+            # EMBER-TS2 format: p1-p6 with time and temperature
+            result = {}
+            for i in range(1, 7):
+                period_key = f"p{i}"
+                temp_key = f"t{i}"
+                period = day_data.get(period_key, {})
+                
+                # Format time
+                result[period_key] = EphEmberThermostat._format_period_ts2(period)
+                
+                # Format temperature (divide by 10)
+                temp = period.get("temperature")
+                if temp is not None:
+                    result[temp_key] = temp / 10.0
+                else:
+                    result[temp_key] = None
+            
+            return result
+        else:
+            # EMBER-PS/EMBER-PS2 format: p1-p3 with startTime/endTime
+            return {
+                "p1": EphEmberThermostat._format_period(day_data.get("p1", {})),
+                "p2": EphEmberThermostat._format_period(day_data.get("p2", {})),
+                "p3": EphEmberThermostat._format_period(day_data.get("p3", {})),
+            }
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -457,6 +503,9 @@ class EphEmberThermostat(ClimateEntity):
 
         device_days = self._zone.get("deviceDays", [])
         if device_days:
+            # Extract deviceType to determine schedule format
+            device_type = self._zone.get("deviceType")
+            
             # dayType: 0=Sunday ... 6=Saturday
             day_names = [
                 "Sunday",
@@ -467,13 +516,16 @@ class EphEmberThermostat(ClimateEntity):
                 "Friday",
                 "Saturday",
             ]
-            schedule: dict[str, dict[str, str | None]] = {}
+            schedule: dict[str, Any] = {}
+            
+            # Add type field to schedule
+            schedule["type"] = self._get_schedule_type(device_type)
 
             for day_data in device_days:
                 day_type = day_data.get("dayType")
                 if isinstance(day_type, int) and 0 <= day_type <= 6:
                     day_name = day_names[day_type]
-                    schedule[day_name] = self._format_day_schedule(day_data)
+                    schedule[day_name] = self._format_day_schedule(day_data, device_type)
 
             if schedule:
                 attrs["schedule"] = schedule
