@@ -28,7 +28,6 @@ def decode_point_data(pstr: str) -> Dict[int, Dict[str, Any]]:
     Returns dict mapping pointIndex to:
         {
             'index': int,
-            'name': str (PointIndex name or 'UNKNOWN'),
             'datatype': int,
             'raw_bytes': str (dotted bytes),
             'value': int
@@ -68,13 +67,8 @@ def decode_point_data(pstr: str) -> Dict[int, Dict[str, Any]]:
         if mode == "value":
             value.append(number)
             if len(value) == lengths[datatype]:
-                try:
-                    index_name = PointIndex(index).name
-                except ValueError:
-                    index_name = 'UNKNOWN'
                 parsed[index] = {
                     'index': index,
-                    'name': index_name,
                     'datatype': datatype,
                     'raw_bytes': ".".join([str(x) for x in value]),
                     'value': bytes_to_int(value)
@@ -96,19 +90,23 @@ class ZoneMode(Enum):
     OFF = 3
 
 
-def GetPointIndex(zone, pointIndex) -> int:
-    assert isinstance(pointIndex, PointIndex)
+def GetPointIndex(zone, ephFunction) -> int:
+    assert isinstance(ephFunction, EphFunction)
     
     # Extract device type once at the top (needed for multiple cases)
     device_type = zone["deviceType"]
     
-    match pointIndex:
-        case PointIndex.ADVANCE_ACTIVE:
+    match ephFunction:
+        case EphFunction.ADVANCE_ACTIVE:
             return 4
-        case PointIndex.CURRENT_TEMP:
+        case EphFunction.CURRENT_TEMP:
             return 5
-        case PointIndex.TARGET_TEMP:
-            # Only call zone_mode when we need it (for deviceType 258)
+        case EphFunction.TARGET_TEMP_R:
+            match device_type:
+                case _:  # deviceType 2, 4, 258, 514, 773
+                    return 6
+        case EphFunction.TARGET_TEMP_W:
+            # Write target temperature - only call zone_mode when we need it (for deviceType 258)
             # This avoids circular dependency since zone_mode needs GetPointIndex for MODE
             match device_type:
                 case 258:
@@ -125,49 +123,64 @@ def GetPointIndex(zone, pointIndex) -> int:
                 case _:  # deviceType 2, 4
                     # These devices use index 6 for all modes
                     return 6
-        case PointIndex.MODE:
+        case EphFunction.MODE:
             match device_type:
                 case 258 | 514 | 773:
                     return 11
                 case _:
                     return 7
-        case PointIndex.BOOST_HOURS:
+        case EphFunction.BOOST_HOURS:
             match device_type:
                 case 258 | 514 | 773:
                     return 13
                 case _:
                     return 8
-        case PointIndex.BOOST_TIME:
+        case EphFunction.BOOST_TIME:
             match device_type:
                 case 258 | 514 | 773:
                     return 15
                 case _:
                     return 9
-        case PointIndex.BOILER_STATE:
+        case EphFunction.BOILER_STATE:
             match device_type:
                 case 258 | 514:
                     return 18
                 case _:
                     return 10
-        case PointIndex.BOOST_TEMP:
+        case EphFunction.BOOST_TEMP:
             return 14
+        case EphFunction.MAX_TEMP:
+            match device_type:
+                case 258 | 514:
+                    return 7  # Hi Temp Limit
+                case _:
+                    return -1  # Not supported
+        case EphFunction.MIN_TEMP:
+            match device_type:
+                case 258 | 514:
+                    return 8  # Lo Temp Limit
+                case _:
+                    return -1  # Not supported
         case _:
-            RuntimeError('Unknown PointIndex:' + pointIndex)
+            return -1  # No point index found
 
 
-class PointIndex(Enum):
+class EphFunction(Enum):
     """
-    Point indices for pointData returned by API
+    EPH function identifiers for pointData operations
     """
 
-    ADVANCE_ACTIVE = 4
-    CURRENT_TEMP = 5
-    TARGET_TEMP = 6
-    MODE = 7
-    BOOST_HOURS = 8
-    BOOST_TIME = 9
-    BOILER_STATE = 10
-    BOOST_TEMP = 14
+    ADVANCE_ACTIVE = 1
+    CURRENT_TEMP = 2
+    TARGET_TEMP_R = 3
+    TARGET_TEMP_W = 4
+    MODE = 5
+    BOOST_HOURS = 6
+    BOOST_TIME = 7
+    BOILER_STATE = 8
+    BOOST_TEMP = 9
+    MAX_TEMP = 10
+    MIN_TEMP = 11
     
 
 
@@ -189,7 +202,7 @@ def zone_command_to_ints(zone, command):
     }
     writable_command_types = {
         'ADVANCE_ACTIVE': 'SMALL_INT',
-        'TARGET_TEMP': 'TEMP_RW',
+        'TARGET_TEMP_W': 'TEMP_RW',
         'MODE': 'SMALL_INT',
         'BOOST_HOURS': 'SMALL_INT',
         'BOOST_TIME': 'TIMESTAMP',
@@ -206,7 +219,11 @@ def zone_command_to_ints(zone, command):
     if command.index is not None:
         command_index = command.index
     else:
-        command_index = GetPointIndex(zone, PointIndex[command.name])
+        command_index = GetPointIndex(zone, EphFunction[command.name])
+        if command_index == -1:
+            raise ValueError(
+                f"No point index found for EphFunction: {command.name}"
+            )
 
     # command header: [0, index, type_id]
     int_array = [0, command_index, type_data[command_type]['id']]
@@ -257,7 +274,7 @@ def zone_advance_active(zone):
             # Need to fix, point index or value is not right
             return False
         case _: # All other devices (2, 4)
-            return zone_pointdata_value(zone, PointIndex.ADVANCE_ACTIVE) != 0
+            return zone_pointdata_value(zone, EphFunction.ADVANCE_ACTIVE) != 0
 
 
 def boiler_state(zone):
@@ -265,7 +282,7 @@ def boiler_state(zone):
     Return the boiler state for a zone, as given by the API
     1 => flame off, 2 => flame on
     """
-    return zone_pointdata_value(zone, PointIndex.BOILER_STATE)
+    return zone_pointdata_value(zone, EphFunction.BOILER_STATE)
 
 def lastKey(dict):
     return list(dict.keys())[-1]
@@ -426,61 +443,85 @@ def zone_boost_hours(zone):
     """
     Return zone boost hours
     """
-    return zone_pointdata_value(zone, PointIndex.BOOST_HOURS)
+    return zone_pointdata_value(zone, EphFunction.BOOST_HOURS)
 
 
 def zone_boost_timestamp(zone):
     """
     Return zone boost hours
     """
-    return zone_pointdata_value(zone, PointIndex.BOOST_TIME)
+    return zone_pointdata_value(zone, EphFunction.BOOST_TIME)
 
-
-def zone_temperature(zone, label):
-    """
-    Return temperature (float) from the PointIndex value for label (str)
-    """
-    if zone["deviceType"] == 773:
-        # in auto mode need to find program target temp.
-        if zone_mode(zone) == ZoneMode.AUTO and label == PointIndex.TARGET_TEMP:
-            programs = zone_get_running_program(zone)
-            if programs is not None:
-                return programs[0]["temperature"] / 10
-            else:
-                return None
-        else:
-            return zone_pointdata_value(zone, PointIndex(label)) / 10
-    else:
-        return zone_pointdata_value(zone, PointIndex(label)) / 10
 
 def zone_target_temperature(zone):
     """
     Get target temperature for this zone
     """
-    return zone_temperature(zone, PointIndex.TARGET_TEMP)
+    if zone["deviceType"] == 773:
+        # in auto mode need to find program target temp.
+        if zone_mode(zone) == ZoneMode.AUTO:
+            programs = zone_get_running_program(zone)
+            if programs is not None:
+                return programs[0]["temperature"] / 10
+            else:
+                return 0
+    result = zone_pointdata_value(zone, EphFunction.TARGET_TEMP_R)
+    if result is None:
+        return 0
+    return result / 10
 
 def zone_boost_temperature(zone):
     """
-    Get target temperature for this zone
+    Get boost temperature for this zone
     """
-    return zone_temperature(zone, PointIndex.BOOST_TEMP)
+    result = zone_pointdata_value(zone, EphFunction.BOOST_TEMP)
+    if result is None:
+        return 0
+    return result / 10
 
 
 def zone_current_temperature(zone):
     """
     Get current temperature for this zone
     """
-    return zone_temperature(zone, PointIndex.CURRENT_TEMP)
+    result = zone_pointdata_value(zone, EphFunction.CURRENT_TEMP)
+    if result is None:
+        return 0
+    return result / 10
 
 
-def zone_pointdata_value(zone, pointIndex):
+def zone_max_temperature(zone):
+    """
+    Get maximum temperature for this zone
+    """
+    result = zone_pointdata_value(zone, EphFunction.MAX_TEMP)
+    if result is None:
+        # Default values: 60.0 for hot water, 35.0 for others
+        return 60.0 if zone_is_hotwater(zone) else 35.0
+    return result / 10
+
+
+def zone_min_temperature(zone):
+    """
+    Get minimum temperature for this zone
+    """
+    result = zone_pointdata_value(zone, EphFunction.MIN_TEMP)
+    if result is None:
+        # Default value: 5.0 for all zones
+        return 5.0
+    return result / 10
+
+
+def zone_pointdata_value(zone, ephFunction):
     """
     Get value of given index for this zone, as an integer
-    index can be either an integer index, or a string label
-    from the PointIndex enum: 'ADVANCE_ACTIVE', 'CURRENT_TEMP', etc
+    ephFunction should be an EphFunction enum member
     """
     # pylint: disable=unsubscriptable-object
-    index = GetPointIndex(zone, pointIndex)
+    index = GetPointIndex(zone, ephFunction)
+    
+    if index == -1:
+        return None  # No point index found
 
     for datum in zone['pointDataList']:
         if datum['pointIndex'] == index:
@@ -514,7 +555,7 @@ def zone_mode(zone):
     OFF = 4
     """
 
-    modeValue = zone_pointdata_value(zone, PointIndex.MODE)
+    modeValue = zone_pointdata_value(zone, EphFunction.MODE)
     match modeValue:
         case 0:
             return ZoneMode.AUTO
@@ -939,7 +980,7 @@ class EphMessenger:
             mac: Zone MAC address
             
         Returns:
-            Dict mapping PointIndex to value, or None if not cached
+            Dict mapping EphFunction to value, or None if not cached
         """
         return self._zone_state_cache.get(mac)
 
@@ -954,7 +995,7 @@ class EphMessenger:
 
         For example, to set target temperature to 19:
 
-          send_zone_command("Zone_name", ZoneCommand('TARGET_TEMP', 19))
+          send_zone_command("Zone_name", ZoneCommand('TARGET_TEMP_W', 19))
 
         """
         def ints_to_b64_cmd(int_array):
@@ -1129,7 +1170,7 @@ class EphEmber:
     def _set_zone_target_temperature(self, zone, target_temperature):
         return self.messenger.send_zone_commands(
             zone,
-            ZoneCommand('TARGET_TEMP', target_temperature, None)
+            ZoneCommand('TARGET_TEMP_W', target_temperature, None)
         )
 
     def _set_zone_boost_temperature(self, zone, target_temperature):
@@ -1411,6 +1452,20 @@ class EphEmber:
         zone = self.get_zone(zoneid)
         return zone_current_temperature(zone)
 
+    def get_zone_max_temperature(self, zoneid):
+        """
+        Get the maximum temperature for a zone
+        """
+        zone = self.get_zone(zoneid)
+        return zone_max_temperature(zone)
+
+    def get_zone_min_temperature(self, zoneid):
+        """
+        Get the minimum temperature for a zone
+        """
+        zone = self.get_zone(zoneid)
+        return zone_min_temperature(zone)
+
     def get_zone_target_temperature(self, zoneid):
         """
         Get the temperature for a zone
@@ -1572,7 +1627,7 @@ class EphEmber:
             mac: Zone MAC address
             
         Returns:
-            Dict mapping PointIndex to value, or None
+            Dict mapping EphFunction to value, or None
         """
         return self.messenger.get_cached_zone_state(mac)
 
@@ -1675,7 +1730,7 @@ class EphEmber:
         Args:
             mac: Zone MAC address
             parsed_pointdata: Dict from decode_point_data(), mapping pointIndex to
-                              {'index': int, 'name': str, 'datatype': int, 'value': int}
+                              {'index': int, 'datatype': int, 'value': int}
         
         Returns:
             True if zone was found and updated, False otherwise
@@ -1708,7 +1763,7 @@ class EphEmber:
                                 # Update in place
                                 zone['pointDataList'][i]['value'] = new_value
                                 point_found = True
-                                _mqtt_logger.debug(f"  Updated PointIndex {point_index} = {new_value}")
+                                _mqtt_logger.debug(f"  Updated EphFunction {point_index} = {new_value}")
                                 break
                         
                         if not point_found:
@@ -1717,7 +1772,7 @@ class EphEmber:
                                 'pointIndex': point_index,
                                 'value': new_value
                             })
-                            _mqtt_logger.debug(f"  Added PointIndex {point_index} = {new_value}")
+                            _mqtt_logger.debug(f"  Added EphFunction {point_index} = {new_value}")
                     
                     # Update timestamp
                     zone['timestamp'] = int(time.time() * 1000)

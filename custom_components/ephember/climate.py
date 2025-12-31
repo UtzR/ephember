@@ -364,7 +364,7 @@ class EphEmberThermostat(ClimateEntity):
         if not self._is_setpoint_modification_enabled():
             return zone_target_temperature(self._zone) or 5.0
 
-        return 5.0
+        return self._ember.get_zone_min_temperature(self._zone_id)
 
     @property
     def max_temp(self) -> float:
@@ -377,8 +377,7 @@ class EphEmberThermostat(ClimateEntity):
             # Fallback based on device type
             return 60.0 if self._hot_water else 35.0
 
-        # Hot Water Controllers: 60°C, Thermostats: 35°C
-        return 60.0 if self._hot_water else 35.0
+        return self._ember.get_zone_max_temperature(self._zone_id)
 
     def update(self) -> None:
         """Get the latest data."""
