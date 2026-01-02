@@ -182,8 +182,31 @@ class EphemberZoneHeatingSensor(SensorEntity):
             state = self.hass.states.get(self._climate_entity_id)
             if state:
                 hvac_action = state.attributes.get('hvac_action')
+                # DEBUG: Log what we're getting
+                _LOGGER.debug(
+                    "Zone heating sensor %s: entity_id=%s, hvac_action=%s (type=%s), state.state=%s",
+                    self._zone_id,
+                    self._climate_entity_id,
+                    hvac_action,
+                    type(hvac_action).__name__,
+                    state.state,
+                )
                 if hvac_action == 'heating':
                     return "heating"
+            else:
+                _LOGGER.debug(
+                    "Zone heating sensor %s: state is None for entity_id=%s",
+                    self._zone_id,
+                    self._climate_entity_id,
+                )
+        else:
+            _LOGGER.debug(
+                "Zone heating sensor %s: Cannot get state - entity_id=%s, has_hass=%s, hass=%s",
+                self._zone_id,
+                self._climate_entity_id,
+                hasattr(self, 'hass'),
+                self.hass if hasattr(self, 'hass') else None,
+            )
         return "idle"
 
     async def async_added_to_hass(self) -> None:
@@ -237,8 +260,19 @@ class EphemberAggregateHeatingSensor(EphemberDiagnosticSensor):
                     state = self.hass.states.get(entity_id)
                     if state:
                         hvac_action = state.attributes.get('hvac_action')
+                        _LOGGER.debug(
+                            "Aggregate heating sensor: zone_id=%s, entity_id=%s, hvac_action=%s",
+                            zone_id,
+                            entity_id,
+                            hvac_action,
+                        )
                         if hvac_action == 'heating':
                             return "heating"
+                    else:
+                        _LOGGER.debug(
+                            "Aggregate heating sensor: state is None for entity_id=%s",
+                            entity_id,
+                        )
         return "idle"
 
     async def async_added_to_hass(self) -> None:
