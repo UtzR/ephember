@@ -14,6 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback, CoreState
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 
 from . import EphemberConfigEntry
 from .const import DOMAIN
@@ -237,8 +238,29 @@ class EphemberZoneHeatingSensor(SensorEntity):
             self._setup_listener()
         else:
             _LOGGER.debug(
-                "Zone heating sensor %s: Climate entity not found during async_added_to_hass",
+                "Zone heating sensor %s: Climate entity not found during async_added_to_hass, will retry",
                 self._zone_id,
+            )
+            # Schedule a retry after a short delay (climate entities may be registered later)
+            @callback
+            def retry_setup(_now):
+                """Retry finding the climate entity after delay."""
+                if self._zone_id in self._data.zone_id_to_entity:
+                    climate_entity = self._data.zone_id_to_entity[self._zone_id]
+                    if climate_entity:
+                        self._climate_entity_id = climate_entity.entity_id
+                        self._setup_listener()
+                        # Trigger an update
+                        self.async_write_ha_state()
+                        _LOGGER.debug(
+                            "Zone heating sensor %s: Found climate entity on retry, entity_id=%s",
+                            self._zone_id,
+                            self._climate_entity_id,
+                        )
+            
+            # Retry after 2 seconds (gives time for climate platform to register entities)
+            self.async_on_remove(
+                async_call_later(self.hass, timedelta(seconds=2.0), retry_setup)
             )
 
     @callback
