@@ -18,6 +18,8 @@ from .pyephember2.pyephember2 import (
     zone_mode,
     zone_name,
     zone_target_temperature,
+    zone_min_temperature,
+    zone_max_temperature,
 )
 import requests
 import voluptuous as vol
@@ -364,7 +366,7 @@ class EphEmberThermostat(ClimateEntity):
         if not self._is_setpoint_modification_enabled():
             return zone_target_temperature(self._zone) or 5.0
 
-        return self._ember.get_zone_min_temperature(self._zone_id)
+        return zone_min_temperature(self._zone)
 
     @property
     def max_temp(self) -> float:
@@ -377,7 +379,7 @@ class EphEmberThermostat(ClimateEntity):
             # Fallback based on device type
             return 60.0 if self._hot_water else 35.0
 
-        return self._ember.get_zone_max_temperature(self._zone_id)
+        return zone_max_temperature(self._zone)
 
     def update(self) -> None:
         """Get the latest data."""
