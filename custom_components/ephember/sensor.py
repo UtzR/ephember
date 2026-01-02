@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -167,6 +167,27 @@ class EphemberZoneHeatingSensor(SensorEntity):
         
         # Store entity_id (will be set when added to hass)
         self._climate_entity_id: str | None = None
+        self._listener_remover: Callable | None = None
+
+    def _setup_listener(self) -> None:
+        """Set up state change listener for climate entity."""
+        if self._climate_entity_id and hasattr(self, 'hass') and self.hass:
+            # Remove any existing listener first
+            if self._listener_remover:
+                self._listener_remover()
+            
+            # Set up new listener
+            self._listener_remover = self.async_on_remove(
+                self.hass.helpers.event.async_track_state_change_event(
+                    self._climate_entity_id,
+                    self._async_climate_state_changed,
+                )
+            )
+            _LOGGER.debug(
+                "Zone heating sensor %s: Set up listener for entity_id=%s",
+                self._zone_id,
+                self._climate_entity_id,
+            )
 
     @property
     def native_value(self) -> str:
@@ -177,10 +198,12 @@ class EphemberZoneHeatingSensor(SensorEntity):
             if climate_entity and hasattr(climate_entity, 'entity_id'):
                 self._climate_entity_id = climate_entity.entity_id
                 _LOGGER.debug(
-                    "Zone heating sensor %s: Found entity_id=%s in property",
+                    "Zone heating sensor %s: Found entity_id=%s in property, setting up listener",
                     self._zone_id,
                     self._climate_entity_id,
                 )
+                # Set up listener now that we have entity_id
+                self._setup_listener()
         
         # Read hvac_action from state machine (like template sensor does)
         if self._climate_entity_id and hasattr(self, 'hass') and self.hass:
@@ -189,23 +212,17 @@ class EphemberZoneHeatingSensor(SensorEntity):
                 state = self.hass.states.get(self._climate_entity_id)
                 if state:
                     hvac_action = state.attributes.get('hvac_action')
-                    # DEBUG: Log what we're getting
-                    _LOGGER.debug(
-                        "Zone heating sensor %s: entity_id=%s, hvac_action=%s (type=%s), state.state=%s",
-                        self._zone_id,
-                        self._climate_entity_id,
-                        hvac_action,
-                        type(hvac_action).__name__,
-                        state.state,
-                    )
+                    # DEBUG: Log what we're getting (only log occasionally to avoid spam)
+                    if not hasattr(self, '_last_logged_action') or self._last_logged_action != hvac_action:
+                        _LOGGER.debug(
+                            "Zone heating sensor %s: entity_id=%s, hvac_action=%s",
+                            self._zone_id,
+                            self._climate_entity_id,
+                            hvac_action,
+                        )
+                        self._last_logged_action = hvac_action
                     if hvac_action == 'heating':
                         return "heating"
-                elif self._climate_entity_id:  # Only log if we have an entity_id
-                    _LOGGER.debug(
-                        "Zone heating sensor %s: state is None for entity_id=%s",
-                        self._zone_id,
-                        self._climate_entity_id,
-                    )
         
         return "idle"
 
@@ -217,13 +234,11 @@ class EphemberZoneHeatingSensor(SensorEntity):
         climate_entity = self._data.zone_id_to_entity.get(self._zone_id) if self._data else None
         if climate_entity:
             self._climate_entity_id = climate_entity.entity_id
-            
-            # Listen for state changes of the climate entity
-            self.async_on_remove(
-                self.hass.helpers.event.async_track_state_change_event(
-                    self._climate_entity_id,
-                    self._async_climate_state_changed,
-                )
+            self._setup_listener()
+        else:
+            _LOGGER.debug(
+                "Zone heating sensor %s: Climate entity not found during async_added_to_hass",
+                self._zone_id,
             )
 
     @callback
