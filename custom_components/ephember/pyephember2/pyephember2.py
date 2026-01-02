@@ -101,27 +101,16 @@ def GetPointIndex(zone, ephFunction) -> int:
             return 4
         case EphFunction.CURRENT_TEMP:
             return 5
-        case EphFunction.TARGET_TEMP_R:
+        case EphFunction.TARGET_TEMP:
             match device_type:
-                case _:  # deviceType 2, 4, 258, 514, 773
-                    return 6
-        case EphFunction.TARGET_TEMP_W:
-            # Write target temperature - only call zone_mode when we need it (for deviceType 258)
-            # This avoids circular dependency since zone_mode needs GetPointIndex for MODE
-            match device_type:
-                case 258:
-                    current_mode = zone_mode(zone)
-                    # deviceType 258: AUTO mode uses index 17, ON/MANUAL/OFF uses index 12
-                    if current_mode == ZoneMode.AUTO:
-                        return 17  # Setpoint (Auto Mode)
+                case 258 | 514:
+                    if zone_mode(zone) == ZoneMode.AUTO:
+                        return 17 if zone_auto_override(zone) else 6  # Setpoint (Auto Mode)
                     else:
                         return 12  # Setpoint (Man Mode)
-                case 514 | 773:
-                    # deviceType 514, 773: Manual mode uses index 12
-                    # For AUTO mode, setpoint comes from schedule, but we use 12 for setting
+                case 773:
                     return 12  # Manual Mode Setpoint
                 case _:  # deviceType 2, 4
-                    # These devices use index 6 for all modes
                     return 6
         case EphFunction.MODE:
             match device_type:
@@ -161,6 +150,12 @@ def GetPointIndex(zone, ephFunction) -> int:
                     return 8  # Lo Temp Limit
                 case _:
                     return -1  # Not supported
+        case EphFunction.AUTO_OVERRIDE:
+            match device_type:
+                case 258 | 514:
+                    return 16  # override
+                case _:
+                    return -1  # Not supported
         case _:
             return -1  # No point index found
 
@@ -172,8 +167,7 @@ class EphFunction(Enum):
 
     ADVANCE_ACTIVE = 1
     CURRENT_TEMP = 2
-    TARGET_TEMP_R = 3
-    TARGET_TEMP_W = 4
+    TARGET_TEMP = 3
     MODE = 5
     BOOST_HOURS = 6
     BOOST_TIME = 7
@@ -181,6 +175,7 @@ class EphFunction(Enum):
     BOOST_TEMP = 9
     MAX_TEMP = 10
     MIN_TEMP = 11
+    AUTO_OVERRIDE = 12
     
 
 
@@ -202,11 +197,12 @@ def zone_command_to_ints(zone, command):
     }
     writable_command_types = {
         'ADVANCE_ACTIVE': 'SMALL_INT',
-        'TARGET_TEMP_W': 'TEMP_RW',
+        'TARGET_TEMP': 'TEMP_RW',
         'MODE': 'SMALL_INT',
         'BOOST_HOURS': 'SMALL_INT',
         'BOOST_TIME': 'TIMESTAMP',
-        'BOOST_TEMP': 'TEMP_RW'
+        'BOOST_TEMP': 'TEMP_RW',
+        'AUTO_OVERRIDE': 'SMALL_INT'
     }
     if command.name not in writable_command_types:
         raise ValueError(
@@ -465,7 +461,7 @@ def zone_target_temperature(zone):
                 return programs[0]["temperature"] / 10
             else:
                 return 0
-    result = zone_pointdata_value(zone, EphFunction.TARGET_TEMP_R)
+    result = zone_pointdata_value(zone, EphFunction.TARGET_TEMP)
     if result is None:
         return 0
     return result / 10
@@ -632,6 +628,21 @@ def zone_mode(zone):
                 f"Unknown modeValue {modeValue} for zone (deviceType: {zone.get('deviceType', 'unknown')}). "
                 f"Expected modeValue: 0, 1, 2, 3, 4, 9, or 10"
             )
+
+
+def zone_auto_override(zone):
+    """
+    Check if AUTO_OVERRIDE is set for this zone.
+    
+    Returns True if AUTO_OVERRIDE is active (value = 1), False otherwise.
+    Only supported for device types 258 and 514.
+    For other device types, returns False.
+    """
+    override_value = zone_pointdata_value(zone, EphFunction.AUTO_OVERRIDE)
+    if override_value is None:
+        return False  # Not supported or not found
+    return override_value == 1
+
 
 def get_zone_mode_value(zone, mode) -> int:
     
@@ -995,7 +1006,7 @@ class EphMessenger:
 
         For example, to set target temperature to 19:
 
-          send_zone_command("Zone_name", ZoneCommand('TARGET_TEMP_W', 19))
+          send_zone_command("Zone_name", ZoneCommand('TARGET_TEMP', 19))
 
         """
         def ints_to_b64_cmd(int_array):
@@ -1168,10 +1179,14 @@ class EphEmber:
         return self._homes[0]['gatewayid']
 
     def _set_zone_target_temperature(self, zone, target_temperature):
-        return self.messenger.send_zone_commands(
-            zone,
-            ZoneCommand('TARGET_TEMP_W', target_temperature, None)
-        )
+        if (zone.get("deviceType") == 258 or zone.get("deviceType") == 514) and zone_mode(zone) == ZoneMode.AUTO:
+            cmds.append(ZoneCommand('AUTO_OVERRIDE', 1, None)) # set override to 1
+            # the next line uses 17 explicit as override is not yet set when calling GetPointIndex
+            # that is ugly and we need to find a way around that
+            cmds.append(ZoneCommand('TARGET_TEMP', target_temperature, 17)) # set target temperature
+        else:
+            cmds.append(ZoneCommand('TARGET_TEMP', target_temperature, None))
+        return self.messenger.send_zone_commands(zone, cmds)
 
     def _set_zone_boost_temperature(self, zone, target_temperature):
         return self.messenger.send_zone_commands(
