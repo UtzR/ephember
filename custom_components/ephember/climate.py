@@ -199,13 +199,15 @@ class EphEmberThermostat(ClimateEntity):
 
             def _send(zone_id: str) -> bool:
                 """Activate boost via MQTT for given zone id."""
-                return self._ember.activate_zone_boost_mqtt(zone_id, boost_temp)
+                # Use cached zone data instead of calling get_zone() which can trigger HTTP calls
+                return self._ember._set_zone_boost(self._zone, boost_temp, num_hours=1, timestamp=0)
 
             await self._call_mqtt_with_resync(_send)
         else:
             def _send(zone_id: str) -> bool:
                 """Deactivate boost via MQTT for given zone id."""
-                return self._ember.deactivate_zone_boost_mqtt(zone_id)
+                # Use cached zone data instead of calling get_zone() which can trigger HTTP calls
+                return self._ember._set_zone_boost(self._zone, None, num_hours=0, timestamp=None)
 
             await self._call_mqtt_with_resync(_send)
         
@@ -320,11 +322,8 @@ class EphEmberThermostat(ClimateEntity):
         if mode is not None:
             def _send(zone_id: str) -> bool:
                 """Send MQTT command for given zone id."""
-                if hvac_mode == HVACMode.OFF:
-                    return self._ember.turn_zone_off_mqtt(zone_id)
-                if hvac_mode == HVACMode.HEAT:
-                    return self._ember.turn_zone_on_mqtt(zone_id)
-                return self._ember.set_zone_mode_mqtt(zone_id, mode)
+                # Use cached zone data instead of calling get_zone() which can trigger HTTP calls
+                return self._ember._set_zone_mode(self._zone, mode)
 
             await self._call_mqtt_with_resync(_send)
             
@@ -351,7 +350,8 @@ class EphEmberThermostat(ClimateEntity):
         
         def _send(zone_id: str) -> bool:
             """Send target temperature via MQTT for given zone id."""
-            return self._ember.set_zone_target_temperature_mqtt(zone_id, temperature)
+            # Use cached zone data instead of calling get_zone() which can trigger HTTP calls
+            return self._ember._set_zone_target_temperature(self._zone, temperature)
 
         await self._call_mqtt_with_resync(_send)
         

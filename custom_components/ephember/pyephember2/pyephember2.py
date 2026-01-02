@@ -1179,6 +1179,7 @@ class EphEmber:
         return self._homes[0]['gatewayid']
 
     def _set_zone_target_temperature(self, zone, target_temperature):
+        cmds = []  # Initialize cmds list
         if (zone.get("deviceType") == 258 or zone.get("deviceType") == 514) and zone_mode(zone) == ZoneMode.AUTO:
             cmds.append(ZoneCommand('AUTO_OVERRIDE', 1, None)) # set override to 1
             # the next line uses 17 explicit as override is not yet set when calling GetPointIndex
