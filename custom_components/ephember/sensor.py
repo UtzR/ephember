@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, callback, CoreState
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -171,42 +171,42 @@ class EphemberZoneHeatingSensor(SensorEntity):
     @property
     def native_value(self) -> str:
         """Return 'heating' or 'idle'."""
-        # Get climate entity ID if not already set
-        if not self._climate_entity_id and self._data:
+        # Try to get entity_id if not set (handles late registration)
+        if not self._climate_entity_id and self._data and self._data.zone_id_to_entity:
             climate_entity = self._data.zone_id_to_entity.get(self._zone_id)
-            if climate_entity:
+            if climate_entity and hasattr(climate_entity, 'entity_id'):
                 self._climate_entity_id = climate_entity.entity_id
+                _LOGGER.debug(
+                    "Zone heating sensor %s: Found entity_id=%s in property",
+                    self._zone_id,
+                    self._climate_entity_id,
+                )
         
         # Read hvac_action from state machine (like template sensor does)
         if self._climate_entity_id and hasattr(self, 'hass') and self.hass:
-            state = self.hass.states.get(self._climate_entity_id)
-            if state:
-                hvac_action = state.attributes.get('hvac_action')
-                # DEBUG: Log what we're getting
-                _LOGGER.debug(
-                    "Zone heating sensor %s: entity_id=%s, hvac_action=%s (type=%s), state.state=%s",
-                    self._zone_id,
-                    self._climate_entity_id,
-                    hvac_action,
-                    type(hvac_action).__name__,
-                    state.state,
-                )
-                if hvac_action == 'heating':
-                    return "heating"
-            else:
-                _LOGGER.debug(
-                    "Zone heating sensor %s: state is None for entity_id=%s",
-                    self._zone_id,
-                    self._climate_entity_id,
-                )
-        else:
-            _LOGGER.debug(
-                "Zone heating sensor %s: Cannot get state - entity_id=%s, has_hass=%s, hass=%s",
-                self._zone_id,
-                self._climate_entity_id,
-                hasattr(self, 'hass'),
-                self.hass if hasattr(self, 'hass') else None,
-            )
+            # Check if hass is actually running
+            if self.hass.state == CoreState.running:
+                state = self.hass.states.get(self._climate_entity_id)
+                if state:
+                    hvac_action = state.attributes.get('hvac_action')
+                    # DEBUG: Log what we're getting
+                    _LOGGER.debug(
+                        "Zone heating sensor %s: entity_id=%s, hvac_action=%s (type=%s), state.state=%s",
+                        self._zone_id,
+                        self._climate_entity_id,
+                        hvac_action,
+                        type(hvac_action).__name__,
+                        state.state,
+                    )
+                    if hvac_action == 'heating':
+                        return "heating"
+                elif self._climate_entity_id:  # Only log if we have an entity_id
+                    _LOGGER.debug(
+                        "Zone heating sensor %s: state is None for entity_id=%s",
+                        self._zone_id,
+                        self._climate_entity_id,
+                    )
+        
         return "idle"
 
     async def async_added_to_hass(self) -> None:
@@ -253,7 +253,7 @@ class EphemberAggregateHeatingSensor(EphemberDiagnosticSensor):
             return "idle"
 
         # Check all climate entities via state machine
-        if hasattr(self, 'hass') and self.hass:
+        if hasattr(self, 'hass') and self.hass and self.hass.state == CoreState.running:
             for zone_id, climate_entity in self._data.zone_id_to_entity.items():
                 if climate_entity and hasattr(climate_entity, 'entity_id'):
                     entity_id = climate_entity.entity_id
