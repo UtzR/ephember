@@ -6,7 +6,6 @@ from datetime import datetime
 import logging
 from typing import Any
 
-from homeassistant.components.climate import HVACAction
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -166,33 +165,35 @@ class EphemberZoneHeatingSensor(SensorEntity):
             identifiers={(DOMAIN, zone_id)},
         )
         
-        # Get reference to climate entity (will be set when added to hass)
-        self._climate_entity = None
-        self._climate_entity_id = None
+        # Store entity_id (will be set when added to hass)
+        self._climate_entity_id: str | None = None
 
     @property
     def native_value(self) -> str:
         """Return 'heating' or 'idle'."""
-        # Try to get climate entity if not already set (handles late registration)
-        if not self._climate_entity and self._data:
-            self._climate_entity = self._data.zone_id_to_entity.get(self._zone_id)
+        # Get climate entity ID if not already set
+        if not self._climate_entity_id and self._data:
+            climate_entity = self._data.zone_id_to_entity.get(self._zone_id)
+            if climate_entity:
+                self._climate_entity_id = climate_entity.entity_id
         
-        if self._climate_entity:
-            try:
-                hvac_action = self._climate_entity.hvac_action
-                return "heating" if hvac_action == HVACAction.HEATING else "idle"
-            except (AttributeError, RuntimeError):
-                pass
+        # Read hvac_action from state machine (like template sensor does)
+        if self._climate_entity_id and hasattr(self, 'hass') and self.hass:
+            state = self.hass.states.get(self._climate_entity_id)
+            if state:
+                hvac_action = state.attributes.get('hvac_action')
+                if hvac_action == 'heating':
+                    return "heating"
         return "idle"
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to climate entity updates."""
         await super().async_added_to_hass()
         
-        # Get reference to climate entity
-        self._climate_entity = self._data.zone_id_to_entity.get(self._zone_id)
-        if self._climate_entity:
-            self._climate_entity_id = self._climate_entity.entity_id
+        # Get reference to climate entity and its entity_id
+        climate_entity = self._data.zone_id_to_entity.get(self._zone_id) if self._data else None
+        if climate_entity:
+            self._climate_entity_id = climate_entity.entity_id
             
             # Listen for state changes of the climate entity
             self.async_on_remove(
@@ -228,14 +229,16 @@ class EphemberAggregateHeatingSensor(EphemberDiagnosticSensor):
         if not self._data or not self._data.zone_id_to_entity:
             return "idle"
 
-        # Check all climate entities
-        for zone_id, climate_entity in self._data.zone_id_to_entity.items():
-            if climate_entity and hasattr(climate_entity, 'hvac_action'):
-                try:
-                    if climate_entity.hvac_action == HVACAction.HEATING:
-                        return "heating"
-                except AttributeError:
-                    continue
+        # Check all climate entities via state machine
+        if hasattr(self, 'hass') and self.hass:
+            for zone_id, climate_entity in self._data.zone_id_to_entity.items():
+                if climate_entity and hasattr(climate_entity, 'entity_id'):
+                    entity_id = climate_entity.entity_id
+                    state = self.hass.states.get(entity_id)
+                    if state:
+                        hvac_action = state.attributes.get('hvac_action')
+                        if hvac_action == 'heating':
+                            return "heating"
         return "idle"
 
     async def async_added_to_hass(self) -> None:
