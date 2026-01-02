@@ -14,7 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback, CoreState
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 
 from . import EphemberConfigEntry
 from .const import DOMAIN
@@ -178,12 +178,12 @@ class EphemberZoneHeatingSensor(SensorEntity):
                 self._listener_remover()
             
             # Set up new listener
-            self._listener_remover = self.async_on_remove(
-                self.hass.helpers.event.async_track_state_change_event(
-                    self._climate_entity_id,
-                    self._async_climate_state_changed,
-                )
+            self._listener_remover = async_track_state_change_event(
+                self.hass,
+                self._climate_entity_id,
+                self._async_climate_state_changed,
             )
+            self.async_on_remove(self._listener_remover)
             _LOGGER.debug(
                 "Zone heating sensor %s: Set up listener for entity_id=%s",
                 self._zone_id,
@@ -327,7 +327,8 @@ class EphemberAggregateHeatingSensor(EphemberDiagnosticSensor):
         # Listen for state changes of all climate entities
         if self._zone_entity_ids:
             self.async_on_remove(
-                self.hass.helpers.event.async_track_state_change_event(
+                async_track_state_change_event(
+                    self.hass,
                     self._zone_entity_ids,
                     self._async_zone_state_changed,
                 )
