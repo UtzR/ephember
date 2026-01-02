@@ -6,12 +6,13 @@ from datetime import datetime
 import logging
 from typing import Any
 
+from homeassistant.components.climate import HVACAction
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -29,12 +30,32 @@ async def async_setup_entry(
     """Set up EPH Controls Ember diagnostic sensors from a config entry."""
     data = entry.runtime_data
     
+    # Diagnostic sensors for main device
     entities = [
         EphemberMQTTConnectionSensor(data, entry),
         EphemberMQTTSentSensor(data, entry),
         EphemberMQTTReceivedSensor(data, entry),
         EphemberHTTPRequestSensor(data, entry),
+        EphemberAggregateHeatingSensor(data, entry),
     ]
+    
+    # Add per-zone heating sensors
+    # Get zone IDs from cached zones data or climate entities
+    zone_ids = set()
+    # Try to get from cached HTTP data first (most reliable during setup)
+    if hasattr(data, 'last_http_zones_data') and data.last_http_zones_data:
+        for home in data.last_http_zones_data:
+            for zone in home.get("zones", []):
+                zone_id = zone.get("zoneid")
+                if zone_id:
+                    zone_ids.add(zone_id)
+    # Also check if climate entities are already registered
+    if hasattr(data, 'zone_id_to_entity') and data.zone_id_to_entity:
+        zone_ids.update(data.zone_id_to_entity.keys())
+    
+    # Create sensors for all discovered zone IDs
+    for zone_id in zone_ids:
+        entities.append(EphemberZoneHeatingSensor(data, entry, zone_id))
     
     async_add_entities(entities)
 
@@ -123,3 +144,122 @@ class EphemberHTTPRequestSensor(EphemberDiagnosticSensor):
         if self._data and self._data.last_http_request:
             return self._data.last_http_request
         return None
+
+
+class EphemberZoneHeatingSensor(SensorEntity):
+    """Sensor for individual zone heating state."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False  # Will update when climate entity updates
+    _attr_icon = "mdi:radiator"
+
+    def __init__(self, data: Any, entry: EphemberConfigEntry, zone_id: str):
+        """Initialize the zone heating sensor."""
+        self._data = data
+        self._entry = entry
+        self._zone_id = zone_id
+        self._attr_name = "Heating"
+        self._attr_unique_id = f"{entry.entry_id}_{zone_id}_heating"
+        
+        # Associate with the zone's device (same as climate entity)
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, zone_id)},
+        )
+        
+        # Get reference to climate entity (will be set when added to hass)
+        self._climate_entity = None
+        self._climate_entity_id = None
+
+    @property
+    def native_value(self) -> str:
+        """Return 'heating' or 'idle'."""
+        # Try to get climate entity if not already set (handles late registration)
+        if not self._climate_entity and self._data:
+            self._climate_entity = self._data.zone_id_to_entity.get(self._zone_id)
+        
+        if self._climate_entity:
+            try:
+                hvac_action = self._climate_entity.hvac_action
+                return "heating" if hvac_action == HVACAction.HEATING else "idle"
+            except (AttributeError, RuntimeError):
+                pass
+        return "idle"
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to climate entity updates."""
+        await super().async_added_to_hass()
+        
+        # Get reference to climate entity
+        self._climate_entity = self._data.zone_id_to_entity.get(self._zone_id)
+        if self._climate_entity:
+            self._climate_entity_id = self._climate_entity.entity_id
+            
+            # Listen for state changes of the climate entity
+            self.async_on_remove(
+                self.hass.helpers.event.async_track_state_change_event(
+                    self._climate_entity_id,
+                    self._async_climate_state_changed,
+                )
+            )
+
+    @callback
+    def _async_climate_state_changed(self, event) -> None:
+        """Handle climate entity state changes."""
+        self.async_write_ha_state()
+
+
+class EphemberAggregateHeatingSensor(EphemberDiagnosticSensor):
+    """Sensor for aggregate heating state across all zones."""
+
+    _attr_name = "Heating"
+    _attr_icon = "mdi:radiator"
+    _attr_should_poll = False  # Will update when zone entities update
+
+    def __init__(self, data: Any, entry: EphemberConfigEntry):
+        """Initialize the aggregate heating sensor."""
+        super().__init__(data, entry)
+        self._entry = entry
+        # Track zone entity IDs for state change listening
+        self._zone_entity_ids: list[str] = []
+
+    @property
+    def native_value(self) -> str:
+        """Return 'heating' if any zone is heating, 'idle' if all are idle."""
+        if not self._data or not self._data.zone_id_to_entity:
+            return "idle"
+
+        # Check all climate entities
+        for zone_id, climate_entity in self._data.zone_id_to_entity.items():
+            if climate_entity and hasattr(climate_entity, 'hvac_action'):
+                try:
+                    if climate_entity.hvac_action == HVACAction.HEATING:
+                        return "heating"
+                except AttributeError:
+                    continue
+        return "idle"
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to all zone entity updates."""
+        await super().async_added_to_hass()
+
+        # Get all zone entity IDs
+        if self._data and self._data.zone_id_to_entity:
+            self._zone_entity_ids = [
+                entity.entity_id
+                for entity in self._data.zone_id_to_entity.values()
+                if entity and hasattr(entity, 'entity_id')
+            ]
+
+        # Listen for state changes of all climate entities
+        if self._zone_entity_ids:
+            self.async_on_remove(
+                self.hass.helpers.event.async_track_state_change_event(
+                    self._zone_entity_ids,
+                    self._async_zone_state_changed,
+                )
+            )
+
+    @callback
+    def _async_zone_state_changed(self, event) -> None:
+        """Handle zone entity state changes."""
+        self.async_write_ha_state()
