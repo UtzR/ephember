@@ -190,7 +190,7 @@ class EphEmberThermostat(ClimateEntity):
         """Return current active preset mode."""
         return PRESET_BOOST if zone_is_boost_active(self._zone) else PRESET_NONE
 
-    def set_preset_mode(self, preset_mode):
+    async def async_set_preset_mode(self, preset_mode):
         """Set new target preset mode."""
         if preset_mode == PRESET_BOOST:
             boost_temp = zone_target_temperature(self._zone)
@@ -199,13 +199,13 @@ class EphEmberThermostat(ClimateEntity):
                 """Activate boost via MQTT for given zone id."""
                 return self._ember.activate_zone_boost_mqtt(zone_id, boost_temp)
 
-            self._call_mqtt_with_resync(_send)
+            await self._call_mqtt_with_resync(_send)
         else:
             def _send(zone_id: str) -> bool:
                 """Deactivate boost via MQTT for given zone id."""
                 return self._ember.deactivate_zone_boost_mqtt(zone_id)
 
-            self._call_mqtt_with_resync(_send)
+            await self._call_mqtt_with_resync(_send)
         
         # Update timestamp
         if self._data:
@@ -250,7 +250,7 @@ class EphEmberThermostat(ClimateEntity):
         
         return switch.is_on
 
-    def _call_mqtt_with_resync(self, send_func: Callable[[str], bool]) -> bool:
+    async def _call_mqtt_with_resync(self, send_func: Callable[[str], bool]) -> bool:
         """Call a MQTT action; on Unknown zone, resync HTTP and retry once."""
         try:
             # First attempt with current zone id
@@ -266,11 +266,11 @@ class EphEmberThermostat(ClimateEntity):
                 self._zone_mac,
             )
 
-            # 1) Force HTTP refresh of homes/zones
+            # 1) Force HTTP refresh of homes/zones (run in executor to avoid blocking event loop)
             try:
                 # Clear cache forcing fresh HTTP fetch
                 self._ember.NextHomeUpdateDaytime = None
-                self._ember.get_zones()
+                await self.hass.async_add_executor_job(self._ember.get_zones)
             except Exception as sync_err:  # pragma: no cover - defensive
                 _LOGGER.warning(
                     "Failed to refresh zones from Ember after Unknown zone for %s: %s",
@@ -312,7 +312,7 @@ class EphEmberThermostat(ClimateEntity):
 
             return send_func(self._zone_id)
 
-    def set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+    async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set the operation mode."""
         mode = self.map_mode_hass_eph(hvac_mode)
         if mode is not None:
@@ -324,7 +324,7 @@ class EphEmberThermostat(ClimateEntity):
                     return self._ember.turn_zone_on_mqtt(zone_id)
                 return self._ember.set_zone_mode_mqtt(zone_id, mode)
 
-            self._call_mqtt_with_resync(_send)
+            await self._call_mqtt_with_resync(_send)
             
             # Update timestamp
             if self._data:
@@ -332,7 +332,7 @@ class EphEmberThermostat(ClimateEntity):
         else:
             _LOGGER.error("Invalid operation mode provided %s", hvac_mode)
 
-    def set_temperature(self, **kwargs: Any) -> None:
+    async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         if (temperature := kwargs.get(ATTR_TEMPERATURE)) is None:
             return
@@ -351,7 +351,7 @@ class EphEmberThermostat(ClimateEntity):
             """Send target temperature via MQTT for given zone id."""
             return self._ember.set_zone_target_temperature_mqtt(zone_id, temperature)
 
-        self._call_mqtt_with_resync(_send)
+        await self._call_mqtt_with_resync(_send)
         
         # Update timestamp
         if self._data:
