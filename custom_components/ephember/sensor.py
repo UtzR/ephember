@@ -88,7 +88,7 @@ class EphemberZoneHeatingSensor(SensorEntity, RestoreEntity):
         self._zone_id: str = zone.get("zoneid")
         self._zone_name: str = zone_name(zone)
 
-        self._attr_unique_id = f"{self._zone_id}_heating"
+        self._attr_unique_id = f"{entry.entry_id}_{self._zone_id}_heating"
 
         # Attach to the SAME device as the climate entity for this zone
         self._attr_device_info = DeviceInfo(
