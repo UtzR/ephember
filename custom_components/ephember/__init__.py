@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import json
 from typing import TYPE_CHECKING, Any
 
-from .pyephember2.pyephember2 import EphEmber, decode_point_data
+from .pyephember2.pyephember2 import EphEmber, decode_point_data, boiler_state
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN
+from .const import DOMAIN, EPHBoilerStates
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +37,11 @@ class EphemberData:
         self.mac_to_zone_id: dict[str, str] = {}
         self.zone_id_to_entity: dict[str, Any] = {}
         self.zone_id_to_switch: dict[str, Any] = {}
+        # Heating sensors (push-updated via MQTT)
+        self.zone_id_to_heating_sensor: dict[str, Any] = {}
+        self.system_heating_sensor: Any | None = None
+        # Cached heating state per zone_id (True=heating)
+        self.zone_heating: dict[str, bool] = {}
         self.last_mqtt_sent: datetime | None = None
         self.last_mqtt_received: datetime | None = None
         self.last_http_request: datetime | None = None
@@ -74,6 +79,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
     data.last_http_request = datetime.now(timezone.utc)
     # Store HTTP zones data
     data.last_http_zones_data = homes
+
+    # Initialize cached zone heating state from HTTP snapshot
+    for home in homes:
+        for zone in home.get("zones", []):
+            zid = zone.get("zoneid")
+            if zid:
+                try:
+                    data.zone_heating[zid] = (boiler_state(zone) == EPHBoilerStates.ON)
+                except Exception:
+                    data.zone_heating[zid] = False
+
     
     # Build MAC to zone_id mapping
     for home in homes:
@@ -131,6 +147,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
             zone = ember.get_zone_by_mac(mac)
             if zone:
                 entity._zone = zone
+                # Update cached heating state and notify heating sensors (thread-safe)
+                try:
+                    is_heating = (boiler_state(zone) == EPHBoilerStates.ON)
+                    data.zone_heating[zone_id] = is_heating
+                    _LOGGER.debug(
+                        "MQTT updated zone_heating cache: zone_id=%s, is_heating=%s",
+                        zone_id,
+                        is_heating,
+                    )
+                except Exception as err:
+                    _LOGGER.debug(
+                        "Error updating zone_heating cache for zone_id %s: %s", zone_id, err
+                    )
+                    # Keep previous state or default to False
+                    if zone_id not in data.zone_heating:
+                        data.zone_heating[zone_id] = False
+                heating_sensor = data.zone_id_to_heating_sensor.get(zone_id)
+                if heating_sensor is not None:
+                    hass.loop.call_soon_threadsafe(heating_sensor.handle_zone_update, zone)
+                if data.system_heating_sensor is not None:
+                    hass.loop.call_soon_threadsafe(data.system_heating_sensor.handle_system_update)
                 # Schedule state update on event loop (thread-safe)
                 # This callback runs in MQTT thread, so we need to schedule on event loop
                 # async_write_ha_state() is a @callback method (synchronous but must run on event loop)

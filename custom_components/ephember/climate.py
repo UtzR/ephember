@@ -47,7 +47,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import EphemberConfigEntry
-from .const import CONF_SCAN_INTERVAL, DOMAIN
+from .const import CONF_SCAN_INTERVAL, DOMAIN, EPHBoilerStates
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,15 +65,6 @@ EPH_TO_HA_STATE = {
     "ON": HVACMode.HEAT,
     "OFF": HVACMode.OFF,
 }
-
-
-class EPHBoilerStates(IntEnum):
-    """Boiler states for a zone given by the api."""
-
-    FIXME = 0
-    OFF = 1
-    ON = 2
-
 
 HA_STATE_TO_EPH = {value: key for key, value in EPH_TO_HA_STATE.items()}
 
