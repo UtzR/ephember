@@ -82,13 +82,30 @@ async def async_get_device_diagnostics(
     hass: HomeAssistant, config_entry: EphemberConfigEntry, device: DeviceEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a device."""
-    # Check if this is the main device
-    if (DOMAIN, config_entry.entry_id) not in device.identifiers:
-        # Not the main device, return empty diagnostics
-        return {}
-    
     data = config_entry.runtime_data
     
+    # Check if this is the main device
+    if (DOMAIN, config_entry.entry_id) in device.identifiers:
+        # Main device - return existing diagnostics
+        return _get_main_device_diagnostics(data)
+    
+    # Check if this is a zone device
+    zone_id = None
+    for identifier in device.identifiers:
+        if identifier[0] == DOMAIN and identifier[1] != config_entry.entry_id:
+            zone_id = identifier[1]
+            break
+    
+    if zone_id is None:
+        # Unknown device type, return empty diagnostics
+        return {}
+    
+    # Zone device - return zone-specific diagnostics
+    return _get_zone_device_diagnostics(data, zone_id)
+
+
+def _get_main_device_diagnostics(data: Any) -> dict[str, Any]:
+    """Return diagnostics for the main device."""
     # Build diagnostics data structure with serializable data
     # Convert zones_data to JSON-serializable format first to avoid recursion issues
     zones_data_serialized = None
@@ -138,3 +155,41 @@ async def async_get_device_diagnostics(
     
     # Redact sensitive data (now safe since all data is already serializable)
     return async_redact_data(diagnostics_data, TO_REDACT)
+
+
+def _get_zone_device_diagnostics(data: Any, zone_id: str) -> dict[str, Any]:
+    """Return diagnostics for a zone device."""
+    if not data.last_http_zones_data:
+        return {}
+    
+    # Find the zone matching the zone_id
+    zone_data = None
+    for home in data.last_http_zones_data:
+        for zone in home.get("zones", []):
+            if zone.get("zoneid") == zone_id:
+                zone_data = zone
+                break
+        if zone_data:
+            break
+    
+    if not zone_data:
+        return {}
+    
+    # Extract zone-specific fields matching the requested format
+    zone_diagnostics: dict[str, Any] = {
+        "deviceType": zone_data.get("deviceType"),
+        "icon": zone_data.get("icon"),
+        "isonline": zone_data.get("isonline"),
+        "mac": zone_data.get("mac"),
+        "name": zone_data.get("name"),
+        "pointDataList": zone_data.get("pointDataList", []),
+        "productId": zone_data.get("productId"),
+        "systemType": zone_data.get("systemType"),
+        "uid": zone_data.get("uid"),
+        "zoneid": zone_data.get("zoneid"),
+        "timestamp": zone_data.get("timestamp"),
+    }
+    
+    # Make JSON-serializable and redact sensitive data
+    zone_diagnostics_serialized = _make_json_serializable(zone_diagnostics)
+    return async_redact_data(zone_diagnostics_serialized, TO_REDACT)
