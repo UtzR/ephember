@@ -66,7 +66,7 @@ climate:
 | 4          | Hot Water   | Hot Water (RFC) Controller on an RX7-RF | EMBER-PS  |
 | 258        | Thermostat  | Thermostat (RFRP-OT) on an RF1A-OT      | EMBER-TS2 |
 | 514        | Thermostat  | Thermostat (RFR-v2) on an RX7-RF-V2     | EMBER-PS2 |
-| 773        | TRV         | TRV (eTRV) on an RF16?                  | ??? (TRV) |
+| 773        | TRV         | TRV (eTRV) on an RF16?                  | EMBER-RS  |
 
 
 | Name      | Mode | Setpoint-R | Setpoint-W | Temp-R| Boost | Boiler| Comment    
@@ -74,7 +74,7 @@ climate:
 | EMBER-PS  | ✅   |  ✅         |  ✅        |  ✅   | ✅     | ✅    |       |
 | EMBER-TS2 | ✅   |  ✅         |  ✅        |  ✅   | ✅     | ✅    |       |
 | EMBER-PS2 | ❓   |  ✅         |  ❓        |  ✅   | ❓     | ❓    |       |
-| TRV       | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❓    |       |
+| EMBER-RS  | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❓    |       |
 
 ✅ This was confirmed to work; ❓ Might work, confirmation needed
 
