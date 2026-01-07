@@ -49,6 +49,23 @@ This integration provides the following enhancements over the [original Home Ass
 2. Click **Add Integration**
 3. Search for "EPH Controls Ember"
 4. Enter your EPH Controls account credentials
+5. Configure optional parameters:
+   - **Scan Interval**: Time between HTTP API polling requests (default: 300 seconds, range: 60-3600 seconds)
+   - **Gas Consumption Rate**: Gas consumption rate of your boiler in m³ per hour (default: 1.5 m³/h, range: 0.1-10.0 m³/h)
+
+You can also modify these settings later by going to the integration's options in **Settings → Devices & Services → EPH Controls Ember → Options**.
+
+### Configuration Parameters
+
+#### Scan Interval
+- **Default**: 300 seconds (5 minutes)
+- **Range**: 60-3600 seconds
+- **Description**: Controls how frequently the integration polls the EPH Controls API via HTTP to refresh zone states. Lower values provide more frequent updates but increase API usage. MQTT messages provide real-time updates regardless of this setting.
+
+#### Gas Consumption Rate
+- **Default**: 1.5 m³/hour
+- **Range**: 0.1-10.0 m³/hour
+- **Description**: The gas consumption rate of your boiler. This value is used to calculate cumulative gas consumption based on heating duration. The value should match your boiler's specifications (e.g., a typical condensing boiler might consume 1.0-2.0 m³/hour at full power).
 
 ### Via YAML (Legacy)
 ```yaml
@@ -57,6 +74,67 @@ climate:
     username: YOUR_USERNAME
     password: YOUR_PASSWORD
 ```
+
+## Entities and Sensors
+
+### Main Device: "EPH Controls Ember"
+
+The integration creates one main device that provides system-wide monitoring and control. This device includes **7 sensors**:
+
+1. **MQTT Connection** (`sensor.eph_controls_ember_mqtt_connection`)
+   - Shows the connection status to the EPH Controls MQTT broker
+   - States: `connected` or `disconnected`
+   - Updates in real-time via MQTT
+
+2. **Last MQTT Sent** (`sensor.eph_controls_ember_last_mqtt_sent`)
+   - Timestamp of the last MQTT message sent to the broker
+   - Useful for debugging communication issues
+
+3. **Last MQTT Received** (`sensor.eph_controls_ember_last_mqtt_received`)
+   - Timestamp of the last MQTT message received from the broker
+   - Shows when the system last received real-time updates
+
+4. **Last HTTP Request** (`sensor.eph_controls_ember_last_http_request`)
+   - Timestamp of the last HTTP API request
+   - Updated according to the Scan Interval configuration
+
+5. **Heating** (`sensor.eph_controls_ember_heating`)
+   - System-wide heating state indicator
+   - States: `idle` (no zones heating) or `heating` (at least one zone heating)
+   - Updates instantly via MQTT when any zone starts or stops heating
+
+6. **Heating Duration** (`sensor.eph_controls_ember_heating_duration`)
+   - Tracks daily heating time in hours
+   - Increments gradually every minute while heating is active
+   - Resets to 0 at midnight local time
+   - Uses the system-wide heating sensor to track when heating is active
+
+7. **Gas Consumption** (`sensor.eph_controls_ember_gas_consumption`)
+   - Tracks cumulative gas consumption in cubic meters (m³)
+   - Calculated from heating duration multiplied by the configured gas consumption rate
+   - Never resets (continuously increasing counter)
+   - Updates every minute while heating is active
+   - State class: `total_increasing` (suitable for energy monitoring)
+   - Requires the "Gas Consumption Rate" configuration parameter
+
+### Zone Devices
+
+Each heating zone (e.g., "Downstairs", "Upstairs", "Hot Water") appears as a separate device with the following entities:
+
+#### Climate Entity
+- **Entity Type**: Climate device
+- **Controls**:
+  - **Temperature Setpoint**: Adjust the target temperature for the zone
+  - **HVAC Mode**: Switch between `OFF`, `HEAT`, and `AUTO` modes
+  - **Boost Preset**: Activate boost mode for rapid heating (via preset selector)
+  - **Current Temperature**: Displays the current room temperature
+  - **HVAC Action**: Shows whether the zone is currently `idle` or `heating`
+
+#### Heating Sensor
+- **Entity**: `sensor.<zone_name>_heating`
+- **States**: `idle` or `heating`
+- **Description**: Per-zone heating state indicator that shows whether this specific zone's boiler is currently active
+- **Updates**: Instantly via MQTT when the zone's heating state changes
 
 ## Supported Device Types
 

@@ -4,6 +4,7 @@ from enum import IntEnum
 
 DOMAIN = "ephember"
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_GAS_CONSUMPTION_RATE = "gas_consumption_rate"
 
 
 class EPHBoilerStates(IntEnum):

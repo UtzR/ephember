@@ -13,7 +13,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 
-from .const import CONF_SCAN_INTERVAL, DOMAIN
+from .const import CONF_GAS_CONSUMPTION_RATE, CONF_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,6 +22,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
         vol.Optional(CONF_SCAN_INTERVAL, default=300): vol.All(int, vol.Range(min=60, max=3600)),
+        vol.Optional(CONF_GAS_CONSUMPTION_RATE, default=1.5): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1, max=10.0)
+        ),
     }
 )
 
@@ -55,9 +58,12 @@ class EphemberConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(user_input[CONF_USERNAME].lower())
                 self._abort_if_unique_id_configured()
 
-                # Store scan_interval in options, credentials in data
+                # Store scan_interval and gas_consumption_rate in options, credentials in data
                 data = {CONF_USERNAME: user_input[CONF_USERNAME], CONF_PASSWORD: user_input[CONF_PASSWORD]}
-                options = {CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, 300)}
+                options = {
+                    CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, 300),
+                    CONF_GAS_CONSUMPTION_RATE: user_input.get(CONF_GAS_CONSUMPTION_RATE, 1.5),
+                }
                 
                 return self.async_create_entry(
                     title=user_input[CONF_USERNAME],
@@ -102,6 +108,10 @@ class EphemberOptionsFlowHandler(OptionsFlow):
                         CONF_SCAN_INTERVAL,
                         default=self.config_entry.options.get(CONF_SCAN_INTERVAL, 300),
                     ): vol.All(int, vol.Range(min=60, max=3600)),
+                    vol.Optional(
+                        CONF_GAS_CONSUMPTION_RATE,
+                        default=self.config_entry.options.get(CONF_GAS_CONSUMPTION_RATE, 1.5),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=10.0)),
                 }
             ),
         )
