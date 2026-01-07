@@ -6,28 +6,23 @@ A custom Home Assistant integration for EPH Controls Ember heating systems with 
 
 This integration provides the following enhancements over the [original Home Assistant ephember integration](https://www.home-assistant.io/integrations/ephember/):
 
-### ✅ Boost Mode Support
-- Activate and deactivate boost via preset modes (`boost` / `none`)
-- Boost state is reflected in the UI immediately
+### ✅ Support of additional EPH Devices and features 
+- Device families such as EMBER-PS, EBER-TS2, EMBER-PS2, EMBER-RS  
+- Features such as Boost and Auto schedule 
 
 ### ✅ UI Configuration
 - Configure the integration via Home Assistant UI (Settings → Devices & Services → Add Integration)
 - No need to edit `configuration.yaml`
 - Validates credentials during setup
 
-### ✅ Device Support
-- Each zone appears as a device in Home Assistant
-- Devices show manufacturer (EPH Controls) and model type
-- Human-readable model names (Thermostat, Hot Water Controller, etc.)
+### ✅ Additional Sensors
+- Sensors to monitor heating on times, heating duration, gas consumption 
 
 ### ✅ Improved State Updates and MQTT support
 - State refresh after changing preset, mode, or temperature
 - Clears API cache to ensure fresh data
 - Uses MQTT for improved state synchronization
 
-### ✅ Network Error Handling
-- Graceful handling of API timeouts and network errors
-- Prevents log spam during temporary connectivity issues
 
 ## Installation
 
@@ -129,6 +124,7 @@ Each heating zone (e.g., "Downstairs", "Upstairs", "Hot Water") appears as a sep
   - **Boost Preset**: Activate boost mode for rapid heating (via preset selector)
   - **Current Temperature**: Displays the current room temperature
   - **HVAC Action**: Shows whether the zone is currently `idle` or `heating`
+- **Schedule Information**: Weekly heating schedules are provided as read-only attributes on the climate entity. The `schedule` attribute contains the weekly schedule with periods (P1, P2, P3) for each day of the week. To visualize schedules in the Home Assistant UI, you can use the [EPH Schedule Card](https://github.com/UtzR/eph-schedule-card), a custom Lovelace card that displays the weekly schedule in a user-friendly format.
 
 #### Heating Sensor
 - **Entity**: `sensor.<zone_name>_heating`
