@@ -244,6 +244,7 @@ class EphemberHeatingDurationSensor(SensorEntity, RestoreEntity):
     _attr_name = "Heating Duration"
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_state_class = SensorStateClass.TOTAL
     _attr_icon = "mdi:clock-outline"
     _attr_should_poll = False
 
