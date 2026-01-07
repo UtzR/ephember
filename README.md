@@ -6,7 +6,7 @@ A custom Home Assistant integration for EPH Controls Ember heating systems with 
 
 This integration provides the following enhancements over the [original Home Assistant ephember integration](https://www.home-assistant.io/integrations/ephember/):
 
-### ✅ Support of additional EPH Devices and features 
+### ✅ Support of Additional EPH Devices and Features 
 - Device families such as EMBER-PS, EBER-TS2, EMBER-PS2, EMBER-RS  
 - Features such as Boost and Auto schedule 
 
@@ -18,7 +18,7 @@ This integration provides the following enhancements over the [original Home Ass
 ### ✅ Additional Sensors
 - Sensors to monitor heating on times, heating duration, gas consumption 
 
-### ✅ Improved State Updates and MQTT support
+### ✅ Improved State Updates and MQTT Support
 - State refresh after changing preset, mode, or temperature
 - Clears API cache to ensure fresh data
 - Uses MQTT for improved state synchronization
