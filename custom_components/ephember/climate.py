@@ -80,8 +80,8 @@ async def async_setup_entry(
 
     try:
         homes = await hass.async_add_executor_job(ember.get_zones)
-    except RuntimeError:
-        _LOGGER.error("Failed to get zones from EPH Controls")
+    except RuntimeError as err:
+        _LOGGER.error("Failed to get zones from EPH Controls: %s", err)
         return
 
     entities = [
@@ -109,14 +109,14 @@ def setup_platform(
 
     try:
         ember = EphEmber(username, password)
-    except RuntimeError:
-        _LOGGER.error("Cannot login to EphEmber")
+    except RuntimeError as err:
+        _LOGGER.error("Cannot login to EphEmber: %s", err)
         return
 
     try:
         homes = ember.get_zones()
-    except RuntimeError:
-        _LOGGER.error("Failed to get zones")
+    except RuntimeError as err:
+        _LOGGER.error("Failed to get zones: %s", err)
         return
 
     # Create minimal data object for legacy setup

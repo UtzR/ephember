@@ -31,8 +31,8 @@ async def async_setup_entry(
 
     try:
         homes = await hass.async_add_executor_job(ember.get_zones)
-    except RuntimeError:
-        _LOGGER.error("Failed to get zones from EPH Controls")
+    except RuntimeError as err:
+        _LOGGER.error("Failed to get zones from EPH Controls: %s", err)
         return
 
     # Only create switches for non-Hot Water Controllers (Thermostats, etc.)
