@@ -143,35 +143,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
         zone_id = data.mac_to_zone_id.get(mac)
         if zone_id and zone_id in data.zone_id_to_entity:
             entity = data.zone_id_to_entity[zone_id]
-            # Update zone data from MQTT
-            zone = ember.get_zone_by_mac(mac)
-            if zone:
-                entity._zone = zone
-                # Update cached heating state and notify heating sensors (thread-safe)
-                try:
-                    is_heating = (boiler_state(zone) == EPHBoilerStates.ON)
-                    data.zone_heating[zone_id] = is_heating
-                    _LOGGER.debug(
-                        "MQTT updated zone_heating cache: zone_id=%s, is_heating=%s",
-                        zone_id,
-                        is_heating,
-                    )
-                except Exception as err:
-                    _LOGGER.debug(
-                        "Error updating zone_heating cache for zone_id %s: %s", zone_id, err
-                    )
-                    # Keep previous state or default to False
-                    if zone_id not in data.zone_heating:
-                        data.zone_heating[zone_id] = False
-                heating_sensor = data.zone_id_to_heating_sensor.get(zone_id)
-                if heating_sensor is not None:
-                    hass.loop.call_soon_threadsafe(heating_sensor.handle_zone_update, zone)
-                if data.system_heating_sensor is not None:
-                    hass.loop.call_soon_threadsafe(data.system_heating_sensor.handle_system_update)
-                # Schedule state update on event loop (thread-safe)
-                # This callback runs in MQTT thread, so we need to schedule on event loop
-                # async_write_ha_state() is a @callback method (synchronous but must run on event loop)
-                hass.loop.call_soon_threadsafe(entity.async_write_ha_state)
+            # Update zone data from MQTT - THIS MUST BE CALLED FIRST!
+            # This updates the zone's pointDataList with the MQTT data so boiler_state() reads correct values
+            updated = ember.update_zone_from_mqtt(mac, parsed_pointdata)
+            if updated:
+                # Get the updated zone (it's the same dict reference, but ensures it's fresh)
+                zone = ember.get_zone_by_mac(mac)
+                if zone:
+                    # Ensure entity._zone points to the updated zone dict
+                    # This is important even if it's the same reference, as it ensures
+                    # the entity is using the most up-to-date zone data
+                    entity._zone = zone
+                    
+                    # Force a state refresh by calling async_write_ha_state immediately
+                    # This ensures hvac_action property reads the updated boiler_state
+                    # This callback runs in MQTT thread, so we need to schedule on event loop
+                    # async_write_ha_state() is a @callback method (synchronous but must run on event loop)
+                    hass.loop.call_soon_threadsafe(entity.async_write_ha_state)
+                    
+                    # Update cached heating state and notify heating sensors (thread-safe)
+                    try:
+                        is_heating = (boiler_state(zone) == EPHBoilerStates.ON)
+                        data.zone_heating[zone_id] = is_heating
+                        _LOGGER.debug(
+                            "MQTT updated zone_heating cache: zone_id=%s, is_heating=%s",
+                            zone_id,
+                            is_heating,
+                        )
+                    except Exception as err:
+                        _LOGGER.debug(
+                            "Error updating zone_heating cache for zone_id %s: %s", zone_id, err
+                        )
+                        # Keep previous state or default to False
+                        if zone_id not in data.zone_heating:
+                            data.zone_heating[zone_id] = False
+                    heating_sensor = data.zone_id_to_heating_sensor.get(zone_id)
+                    if heating_sensor is not None:
+                        hass.loop.call_soon_threadsafe(heating_sensor.handle_zone_update, zone)
+                    if data.system_heating_sensor is not None:
+                        hass.loop.call_soon_threadsafe(data.system_heating_sensor.handle_system_update)
         _LOGGER.debug("MQTT update received for MAC %s (zone_id: %s)", mac, zone_id)
 
     def on_mqtt_log(direction: str, content: str) -> None:

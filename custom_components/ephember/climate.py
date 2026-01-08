@@ -381,6 +381,38 @@ class EphEmberThermostat(ClimateEntity):
             if self._data:
                 self._data.last_http_request = datetime.now(timezone.utc)
                 self._data.last_http_zones_data = homes
+                
+                # Update zone_heating cache for all zones from HTTP refresh (fallback)
+                # This ensures heating sensors get updated even if MQTT misses messages
+                for home in homes:
+                    for zone in home.get("zones", []):
+                        zid = zone.get("zoneid")
+                        if zid:
+                            try:
+                                is_heating = (boiler_state(zone) == EPHBoilerStates.ON)
+                                old_state = self._data.zone_heating.get(zid, False)
+                                self._data.zone_heating[zid] = is_heating
+                                
+                                # Notify zone heating sensor if state changed
+                                if old_state != is_heating:
+                                    heating_sensor = self._data.zone_id_to_heating_sensor.get(zid)
+                                    if heating_sensor is not None:
+                                        # Schedule update on event loop (thread-safe)
+                                        # This runs in executor thread, so schedule on event loop
+                                        self.hass.loop.call_soon_threadsafe(
+                                            heating_sensor.handle_zone_update, zone
+                                        )
+                            except Exception as err:
+                                _LOGGER.debug(
+                                    "Error updating zone_heating cache from HTTP for zone_id %s: %s",
+                                    zid, err
+                                )
+                
+                # Notify system heating sensor after all zones are updated
+                if self._data.system_heating_sensor is not None:
+                    self.hass.loop.call_soon_threadsafe(
+                        self._data.system_heating_sensor.handle_system_update
+                    )
         except requests.exceptions.Timeout as err:
             _LOGGER.debug("Timeout updating zone %s: %s", self._zone_name, err)
         except requests.exceptions.RequestException as err:
