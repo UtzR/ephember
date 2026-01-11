@@ -1,0 +1,19 @@
+{
+  "entity": {
+    "climate": {
+      "ephember": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "Auto": "mdi:auto-mode",
+              "All Day": "mdi:calendar-clock",
+              "none": "mdi:gesture-tap",
+              "boost": "mdi:rocket-launch"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

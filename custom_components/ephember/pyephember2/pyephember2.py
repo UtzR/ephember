@@ -421,6 +421,16 @@ def zone_is_hotwater(zone):
     else:
         return False
 
+def zone_supports_all_day(zone):
+    """
+    Check if zone supports ALL_DAY mode.
+    
+    Returns True for device types 2, 4, and 514.
+    Returns False for device types 258 and 773.
+    """
+    device_type = zone.get("deviceType")
+    return device_type in (2, 4, 514)
+
 def zone_name(zone):
     """
     Get zone name

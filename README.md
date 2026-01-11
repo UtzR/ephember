@@ -8,7 +8,7 @@ This integration provides the following enhancements over the [original Home Ass
 
 ### ✅ Support of Additional EPH Devices and Features 
 - Device families such as EMBER-PS, EBER-TS2, EMBER-PS2, EMBER-RS  
-- Features such as Boost and Auto schedule 
+- Features such as Boost, Auto schedule, and All Day mode 
 
 ### ✅ UI Configuration
 - Configure the integration via Home Assistant UI (Settings → Devices & Services → Add Integration)
@@ -120,8 +120,12 @@ Each heating zone (e.g., "Downstairs", "Upstairs", "Hot Water") appears as a sep
 - **Entity Type**: Climate device
 - **Controls**:
   - **Temperature Setpoint**: Adjust the target temperature for the zone
-  - **HVAC Mode**: Switch between `OFF`, `HEAT`, and `AUTO` modes
-  - **Boost Preset**: Activate boost mode for rapid heating (via preset selector)
+  - **HVAC Mode**: Switch between `OFF` and `ON` (Heat) modes
+  - **Preset Mode**: Select from the following presets:
+    - **None**: Manual mode (ON without schedule)
+    - **Auto**: Automatic schedule mode (follows weekly schedule)
+    - **All Day**: Continuous heating mode (available for device types 2, 4, and 514)
+    - **Boost**: Rapid heating mode (temporary boost)
   - **Current Temperature**: Displays the current room temperature
   - **HVAC Action**: Shows whether the zone is currently `idle` or `heating`
 - **Schedule Information**: Weekly heating schedules are provided as read-only attributes on the climate entity. The `schedule` attribute contains the weekly schedule with periods (P1, P2, P3) for each day of the week. To visualize schedules in the Home Assistant UI, you can use the [EPH Schedule Card](https://github.com/UtzR/eph-schedule-card), a custom Lovelace card that displays the weekly schedule in a user-friendly format.
@@ -152,11 +156,11 @@ Each heating zone (e.g., "Downstairs", "Upstairs", "Hot Water") appears as a sep
 
 ✅ This was confirmed to work; ❓ Might work, confirmation needed
 
-- Mode: Can switch mode (OFF/HEAT/AUTO)
+- Mode: Can switch HVAC mode (OFF/ON) and preset modes (Auto, All Day, Boost, None)
 - Setpoint-R: Can read the setpoint
 - Setpoint-W: Can write the setpoint
 - Temp-R: Can read the temperature
-- Boost: Preset of Boost is working
+- Boost: Boost preset mode is working
 - Boiler: Boiler state is reported (Idle/Heating)
 
 ## Differences from Core Integration

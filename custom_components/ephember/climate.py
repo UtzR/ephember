@@ -17,6 +17,7 @@ from .pyephember2.pyephember2 import (
     zone_is_boost_active,
     zone_mode,
     zone_name,
+    zone_supports_all_day,
     zone_target_temperature,
     zone_min_temperature,
     zone_max_temperature,
@@ -54,19 +55,15 @@ _LOGGER = logging.getLogger(__name__)
 # Default scan interval (will be overridden by config)
 SCAN_INTERVAL = timedelta(seconds=300)
 
-OPERATION_LIST = [HVACMode.AUTO, HVACMode.HEAT, HVACMode.OFF]
+OPERATION_LIST = [HVACMode.HEAT, HVACMode.OFF]
 
 PLATFORM_SCHEMA = CLIMATE_PLATFORM_SCHEMA.extend(
     {vol.Required(CONF_USERNAME): cv.string, vol.Required(CONF_PASSWORD): cv.string}
 )
 
-EPH_TO_HA_STATE = {
-    "AUTO": HVACMode.AUTO,
-    "ON": HVACMode.HEAT,
-    "OFF": HVACMode.OFF,
-}
-
-HA_STATE_TO_EPH = {value: key for key, value in EPH_TO_HA_STATE.items()}
+# Preset mode constants
+PRESET_AUTO = "Auto"
+PRESET_ALL_DAY = "All Day"
 
 
 async def async_setup_entry(
@@ -133,9 +130,9 @@ class EphEmberThermostat(ClimateEntity):
 
     _attr_hvac_modes = OPERATION_LIST
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST]
     _attr_has_entity_name = True
     _attr_name = None  # Use device name as entity name
+    _attr_translation_key = "ephember"  # Links to icons.json entity identifier
 
     def __init__(self, data, ember, zone, entry) -> None:
         """Initialize the thermostat."""
@@ -147,9 +144,17 @@ class EphEmberThermostat(ClimateEntity):
         self._zone_id = zone["zoneid"]
         self._zone_mac = zone.get("mac")
         self._attr_unique_id = self._zone_id
+        self._device_type = zone.get("deviceType")
 
         # hot water = true, is immersive device without target temperature control.
         self._hot_water = zone_is_hotwater(zone)
+
+        # Determine preset modes based on device type
+        preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_AUTO]
+        # Add ALL_DAY preset if device supports it
+        if zone_supports_all_day(zone):
+            preset_modes.append(PRESET_ALL_DAY)
+        self._attr_preset_modes = preset_modes
 
         self._attr_supported_features = (
             ClimateEntityFeature.TARGET_TEMPERATURE
@@ -181,26 +186,74 @@ class EphEmberThermostat(ClimateEntity):
     @property
     def preset_mode(self):
         """Return current active preset mode."""
-        return PRESET_BOOST if zone_is_boost_active(self._zone) else PRESET_NONE
+        mode = zone_mode(self._zone)
+        
+        # Check boost first (boost can be active in any mode)
+        if zone_is_boost_active(self._zone):
+            return PRESET_BOOST
+        
+        # Map zone modes to presets
+        if mode == ZoneMode.AUTO:
+            return PRESET_AUTO
+        elif mode == ZoneMode.ALL_DAY:
+            return PRESET_ALL_DAY
+        elif mode == ZoneMode.ON:
+            return PRESET_NONE  # ON without preset
+        else:  # OFF or unknown
+            return PRESET_NONE
 
     async def async_set_preset_mode(self, preset_mode):
         """Set new target preset mode."""
         if preset_mode == PRESET_BOOST:
+            # Boost handling (existing logic)
             boost_temp = zone_target_temperature(self._zone)
 
             def _send(zone_id: str) -> bool:
                 """Activate boost via MQTT for given zone id."""
-                # Use cached zone data instead of calling get_zone() which can trigger HTTP calls
                 return self._ember._set_zone_boost(self._zone, boost_temp, num_hours=1, timestamp=0)
 
             await self._call_mqtt_with_resync(_send)
-        else:
+            
+        elif preset_mode == PRESET_AUTO:
+            # Set zone mode to AUTO
             def _send(zone_id: str) -> bool:
-                """Deactivate boost via MQTT for given zone id."""
-                # Use cached zone data instead of calling get_zone() which can trigger HTTP calls
-                return self._ember._set_zone_boost(self._zone, None, num_hours=0, timestamp=None)
-
+                """Set zone mode to AUTO via MQTT."""
+                return self._ember._set_zone_mode(self._zone, ZoneMode.AUTO)
+            
             await self._call_mqtt_with_resync(_send)
+            
+        elif preset_mode == PRESET_ALL_DAY:
+            # Set zone mode to ALL_DAY (only for supported device types)
+            if not zone_supports_all_day(self._zone):
+                _LOGGER.warning(
+                    "ALL_DAY mode not supported for deviceType %s", self._device_type
+                )
+                return
+            
+            def _send(zone_id: str) -> bool:
+                """Set zone mode to ALL_DAY via MQTT."""
+                return self._ember._set_zone_mode(self._zone, ZoneMode.ALL_DAY)
+            
+            await self._call_mqtt_with_resync(_send)
+            
+        elif preset_mode == PRESET_NONE:
+            # Set zone mode to ON (manual ON, no preset)
+            def _send(zone_id: str) -> bool:
+                """Set zone mode to ON via MQTT."""
+                return self._ember._set_zone_mode(self._zone, ZoneMode.ON)
+            
+            await self._call_mqtt_with_resync(_send)
+            
+            # Also deactivate boost if it was active
+            if zone_is_boost_active(self._zone):
+                def _send_boost_off(zone_id: str) -> bool:
+                    """Deactivate boost via MQTT."""
+                    return self._ember._set_zone_boost(self._zone, None, num_hours=0, timestamp=None)
+                
+                await self._call_mqtt_with_resync(_send_boost_off)
+        else:
+            _LOGGER.error("Invalid preset mode provided %s", preset_mode)
+            return
         
         # Update timestamp
         if self._data:
@@ -226,9 +279,19 @@ class EphEmberThermostat(ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode:
-        """Return current operation ie. heat, cool, idle."""
+        """Return current operation mode - OFF or ON (HEAT)."""
         mode = zone_mode(self._zone)
-        return self.map_mode_eph_hass(mode)
+        
+        # If boost is active, always show as HEAT
+        if zone_is_boost_active(self._zone):
+            return HVACMode.HEAT
+        
+        # If mode is OFF, return OFF
+        if mode == ZoneMode.OFF:
+            return HVACMode.OFF
+        
+        # All other modes (AUTO, ALL_DAY, ON) show as HEAT
+        return HVACMode.HEAT
 
     def _is_setpoint_modification_enabled(self) -> bool:
         """Check if setpoint modification is enabled via the switch entity."""
@@ -308,21 +371,41 @@ class EphEmberThermostat(ClimateEntity):
             return send_func(self._zone_id)
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """Set the operation mode."""
-        mode = self.map_mode_hass_eph(hvac_mode)
-        if mode is not None:
-            def _send(zone_id: str) -> bool:
-                """Send MQTT command for given zone id."""
-                # Use cached zone data instead of calling get_zone() which can trigger HTTP calls
-                return self._ember._set_zone_mode(self._zone, mode)
-
-            await self._call_mqtt_with_resync(_send)
+        """Set the operation mode - OFF or ON."""
+        if hvac_mode == HVACMode.OFF:
+            # Set to OFF mode
+            mode = ZoneMode.OFF
             
-            # Update timestamp
-            if self._data:
-                self._data.last_mqtt_sent = datetime.now(timezone.utc)
+            # Cancel boost if it's active
+            if zone_is_boost_active(self._zone):
+                def _send_boost_off(zone_id: str) -> bool:
+                    """Deactivate boost via MQTT."""
+                    return self._ember._set_zone_boost(self._zone, None, num_hours=0, timestamp=None)
+                
+                await self._call_mqtt_with_resync(_send_boost_off)
+        elif hvac_mode == HVACMode.HEAT:
+            # Set to ON mode (preserves current zone mode if AUTO/ALL_DAY, otherwise just ON)
+            current_mode = zone_mode(self._zone)
+            if current_mode == ZoneMode.AUTO:
+                mode = ZoneMode.AUTO
+            elif current_mode == ZoneMode.ALL_DAY:
+                mode = ZoneMode.ALL_DAY
+            else:
+                # ON without preset (or BOOST, which is separate)
+                mode = ZoneMode.ON
         else:
             _LOGGER.error("Invalid operation mode provided %s", hvac_mode)
+            return
+        
+        def _send(zone_id: str) -> bool:
+            """Send MQTT command for given zone id."""
+            return self._ember._set_zone_mode(self._zone, mode)
+
+        await self._call_mqtt_with_resync(_send)
+        
+        # Update timestamp
+        if self._data:
+            self._data.last_mqtt_sent = datetime.now(timezone.utc)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
@@ -555,15 +638,3 @@ class EphEmberThermostat(ClimateEntity):
                 attrs["schedule"] = schedule
 
         return attrs
-
-    @staticmethod
-    def map_mode_hass_eph(operation_mode):
-        """Map from Home Assistant mode to eph mode."""
-        return getattr(ZoneMode, HA_STATE_TO_EPH.get(operation_mode), None)
-
-    @staticmethod
-    def map_mode_eph_hass(operation_mode):
-        """Map from eph mode to Home Assistant mode."""
-        if operation_mode is None:
-            return HVACMode.AUTO
-        return EPH_TO_HA_STATE.get(operation_mode.name, HVACMode.AUTO)
