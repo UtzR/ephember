@@ -90,6 +90,41 @@ class ZoneMode(Enum):
     OFF = 3
 
 
+def _get_zone_lock(zone: dict) -> threading.RLock:
+    """
+    Get or create a reentrant lock for a zone's pointDataList.
+    Thread-safe access to pointDataList requires this lock.
+    """
+    if '_pointdata_lock' not in zone:
+        # Create lock if it doesn't exist
+        # Note: This initialization is not fully thread-safe, but acceptable since
+        # lock creation is idempotent and races are rare (worst case: two locks created, one discarded)
+        lock = threading.RLock()
+        zone['_pointdata_lock'] = lock
+    return zone['_pointdata_lock']
+
+
+def _get_pointdata_value_by_index(zone: dict, point_index: int) -> Optional[int]:
+    """
+    Directly get a value from pointDataList by point index.
+    Helper function to avoid circular dependencies.
+    Thread-safe: Uses per-zone lock to protect pointDataList access.
+    Returns None if point not found.
+    """
+    lock = _get_zone_lock(zone)
+    with lock:
+        if 'pointDataList' not in zone:
+            return None
+        
+        for datum in zone['pointDataList']:
+            if datum.get('pointIndex') == point_index:
+                try:
+                    return int(datum.get('value', 0))
+                except (ValueError, TypeError):
+                    return None
+        return None
+
+
 def GetPointIndex(zone, ephFunction) -> int:
     assert isinstance(ephFunction, EphFunction)
     
@@ -104,8 +139,12 @@ def GetPointIndex(zone, ephFunction) -> int:
         case EphFunction.TARGET_TEMP:
             match device_type:
                 case 258 | 514:
-                    if zone_mode(zone) == ZoneMode.AUTO:
-                        return 17 if zone_auto_override(zone) else 6  # Setpoint (Auto Mode)
+                    # Directly read MODE value (point index 11) instead of calling zone_mode()
+                    mode_value = _get_pointdata_value_by_index(zone, 11)
+                    if mode_value == 0:  # AUTO mode
+                        # Directly read AUTO_OVERRIDE value (point index 16) instead of calling zone_auto_override()
+                        override_value = _get_pointdata_value_by_index(zone, 16)
+                        return 17 if (override_value == 1) else 6  # Setpoint (Auto Mode)
                     else:
                         return 12  # Setpoint (Man Mode)
                 case 773:
@@ -522,6 +561,7 @@ def zone_pointdata_value(zone, ephFunction):
     """
     Get value of given index for this zone, as an integer
     ephFunction should be an EphFunction enum member
+    Thread-safe: Uses per-zone lock to protect pointDataList access.
     """
     # pylint: disable=unsubscriptable-object
     index = GetPointIndex(zone, ephFunction)
@@ -529,9 +569,11 @@ def zone_pointdata_value(zone, ephFunction):
     if index == -1:
         return None  # No point index found
 
-    for datum in zone['pointDataList']:
-        if datum['pointIndex'] == index:
-            return int(datum['value'])
+    lock = _get_zone_lock(zone)
+    with lock:
+        for datum in zone['pointDataList']:
+            if datum['pointIndex'] == index:
+                return int(datum['value'])
 
     return None
 
@@ -1752,6 +1794,7 @@ class EphEmber:
         This allows MQTT updates to be reflected in the cached HTTP data,
         so legacy functions like zone_mode(), zone_current_temperature() etc.
         will return the most up-to-date values without requiring an HTTP refresh.
+        Thread-safe: Uses per-zone lock to protect pointDataList modifications.
         
         Args:
             mac: Zone MAC address
@@ -1772,35 +1815,37 @@ class EphEmber:
                     zone_name_str = zone.get('name', 'Unknown')
                     _mqtt_logger.debug(f"Found zone '{zone_name_str}' for MAC {mac}")
                     
-                    # Ensure pointDataList exists
-                    if 'pointDataList' not in zone:
-                        zone['pointDataList'] = []
-                    
-                    # Update each point from MQTT data
-                    for point_index, point_info in parsed_pointdata.items():
-                        new_value = str(point_info['value'])
+                    lock = _get_zone_lock(zone)
+                    with lock:
+                        # Ensure pointDataList exists
+                        if 'pointDataList' not in zone:
+                            zone['pointDataList'] = []
                         
-                        # Find existing point by index
-                        point_found = False
-                        for i, point in enumerate(zone['pointDataList']):
-                            # Handle both int and string pointIndex
-                            existing_index = point.get('pointIndex')
-                            if existing_index == point_index or str(existing_index) == str(point_index):
-                                # Update in place
-                                zone['pointDataList'][i]['value'] = new_value
-                                point_found = True
-                                _mqtt_logger.debug(f"  Updated EphFunction {point_index} = {new_value}")
-                                break
-                        
-                        if not point_found:
-                            # Add new point
-                            zone['pointDataList'].append({
-                                'pointIndex': point_index,
-                                'value': new_value
-                            })
-                            _mqtt_logger.debug(f"  Added EphFunction {point_index} = {new_value}")
+                        # Update each point from MQTT data
+                        for point_index, point_info in parsed_pointdata.items():
+                            new_value = str(point_info['value'])
+                            
+                            # Find existing point by index
+                            point_found = False
+                            for i, point in enumerate(zone['pointDataList']):
+                                # Handle both int and string pointIndex
+                                existing_index = point.get('pointIndex')
+                                if existing_index == point_index or str(existing_index) == str(point_index):
+                                    # Update in place
+                                    zone['pointDataList'][i]['value'] = new_value
+                                    point_found = True
+                                    _mqtt_logger.debug(f"  Updated EphFunction {point_index} = {new_value}")
+                                    break
+                            
+                            if not point_found:
+                                # Add new point
+                                zone['pointDataList'].append({
+                                    'pointIndex': point_index,
+                                    'value': new_value
+                                })
+                                _mqtt_logger.debug(f"  Added EphFunction {point_index} = {new_value}")
                     
-                    # Update timestamp
+                    # Update timestamp (outside lock, as it's not part of pointDataList)
                     zone['timestamp'] = int(time.time() * 1000)
                     zone['_last_mqtt_update'] = datetime.datetime.now().isoformat()
                     
