@@ -119,18 +119,18 @@ class EphemberZoneHeatingSensor(SensorEntity, RestoreEntity):
         """Restore last state so we don't wait for MQTT."""
         await super().async_added_to_hass()
         try:
-            last = await self.async_get_last_state()
+        last = await self.async_get_last_state()
             state_restored = False
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._state = last.state
+        if last and last.state not in (None, "unknown", "unavailable"):
+            self._state = last.state
                 state_restored = True
 
-            # If not restored, initialize from cache (populated at integration startup)
+        # If not restored, initialize from cache (populated at integration startup)
             if not state_restored:
                 if self._data and hasattr(self._data, 'zone_heating'):
-                    self._state = "heating" if self._data.zone_heating.get(self._zone_id, False) else "idle"
+            self._state = "heating" if self._data.zone_heating.get(self._zone_id, False) else "idle"
 
-            self.async_write_ha_state()
+        self.async_write_ha_state()
         except Exception as err:
             _LOGGER.error(
                 "Error initializing zone heating sensor %s: %s", self._zone_id, err, exc_info=True
@@ -183,18 +183,18 @@ class EphemberSystemHeatingSensor(SensorEntity, RestoreEntity):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         try:
-            last = await self.async_get_last_state()
+        last = await self.async_get_last_state()
             state_restored = False
-            if last and last.state not in (None, "unknown", "unavailable"):
-                self._state = last.state
+        if last and last.state not in (None, "unknown", "unavailable"):
+            self._state = last.state
                 state_restored = True
 
             # If not restored, initialize from cache (populated at integration startup)
             if not state_restored:
                 if self._data and hasattr(self._data, 'zone_heating') and self._data.zone_heating:
-                    self._state = "heating" if any(self._data.zone_heating.values()) else "idle"
+            self._state = "heating" if any(self._data.zone_heating.values()) else "idle"
 
-            self.async_write_ha_state()
+        self.async_write_ha_state()
         except Exception as err:
             _LOGGER.error(
                 "Error initializing system heating sensor: %s", err, exc_info=True
@@ -389,7 +389,7 @@ class EphemberHeatingDurationSensor(SensorEntity, RestoreEntity):
             if self._is_heating:
                 self._heating_start_time = now
 
-            self.async_write_ha_state()
+        self.async_write_ha_state()
 
             # Schedule next midnight reset
             self._schedule_midnight_reset()

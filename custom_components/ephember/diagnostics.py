@@ -103,7 +103,7 @@ async def async_get_device_diagnostics(
     # Zone device - return zone-specific diagnostics
     return _get_zone_device_diagnostics(data, zone_id)
 
-
+    
 def _get_main_device_diagnostics(data: Any) -> dict[str, Any]:
     """Return diagnostics for the main device."""
     # Build diagnostics data structure with serializable data

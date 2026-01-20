@@ -241,7 +241,7 @@ class EphEmberThermostat(ClimateEntity):
             def _send(zone_id: str) -> bool:
                 """Set zone mode to ON via MQTT."""
                 return self._ember._set_zone_mode(self._zone, ZoneMode.ON)
-            
+
             await self._call_mqtt_with_resync(_send)
             
             # Also deactivate boost if it was active
@@ -397,15 +397,15 @@ class EphEmberThermostat(ClimateEntity):
             _LOGGER.error("Invalid operation mode provided %s", hvac_mode)
             return
         
-        def _send(zone_id: str) -> bool:
-            """Send MQTT command for given zone id."""
-            return self._ember._set_zone_mode(self._zone, mode)
+            def _send(zone_id: str) -> bool:
+                """Send MQTT command for given zone id."""
+                return self._ember._set_zone_mode(self._zone, mode)
 
-        await self._call_mqtt_with_resync(_send)
-        
-        # Update timestamp
-        if self._data:
-            self._data.last_mqtt_sent = datetime.now(timezone.utc)
+            await self._call_mqtt_with_resync(_send)
+            
+            # Update timestamp
+            if self._data:
+                self._data.last_mqtt_sent = datetime.now(timezone.utc)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
