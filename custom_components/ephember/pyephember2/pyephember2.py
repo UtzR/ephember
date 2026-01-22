@@ -12,7 +12,7 @@ import threading
 import logging
 
 from enum import Enum
-from typing import OrderedDict, Callable, Optional, Dict, Any, List
+from typing import OrderedDict, Callable, Optional, Dict, Any, List, Union
 
 import requests
 import paho.mqtt.client as mqtt
@@ -161,88 +161,42 @@ def _get_pointdata_value_by_index(zone: dict, point_index: int) -> Optional[int]
 
 
 def GetPointIndex(zone, ephFunction) -> int:
+    """
+    Get the point index for a given EphFunction and zone.
+    
+    Uses EMBER_POINT_INDEX_MAP to look up point indices based on systemType.
+    For functions that require runtime evaluation (like TARGET_TEMP), a callable
+    is stored in the map that will be called with the zone dict.
+    
+    Args:
+        zone: Zone dictionary containing systemType
+        ephFunction: EphFunction enum member
+        
+    Returns:
+        Point index (int) if found, -1 if not supported or systemType unknown
+    """
     assert isinstance(ephFunction, EphFunction)
     
-    # Extract device type once at the top (needed for multiple cases)
-    # device_type = zone.get("deviceType")
     system_type = zone.get("systemType")
+    if system_type is None:
+        return -1  # Cannot determine point index without systemType
     
-    match ephFunction:
-        case EphFunction.ADVANCE_ACTIVE:
-            return 4
-        case EphFunction.CURRENT_TEMP:
-            return 5
-        case EphFunction.TARGET_TEMP:
-            match system_type:
-                case "EMBER-TS1" | "EMBER-TS2" | "EMBER-PS2":
-                    # Directly read MODE value (point index 11) instead of calling zone_mode()
-                    mode_value = _get_pointdata_value_by_index(zone, 11)
-                    if mode_value == 0:  # AUTO mode
-                        # Directly read AUTO_OVERRIDE value (point index 16) instead of calling zone_auto_override()
-                        override_value = _get_pointdata_value_by_index(zone, 16)
-                        return 17 if (override_value == 1) else 6  # Setpoint (Auto Mode)
-                    else:
-                        return 12  # Setpoint (Man Mode)
-                case "EMBER-RS":
-                    return 12  # Manual Mode Setpoint
-                case "EMBER-PS":  
-                    return 6
-                case _:
-                    return -1  # Unknown systemType
-        case EphFunction.MODE:
-            match system_type:
-                case "EMBER-TS1" | "EMBER-TS2" | "EMBER-PS2" | "EMBER-RS":
-                    return 11
-                case "EMBER-PS":
-                    return 7
-                case _:
-                    return -1  # Unknown systemType
-        case EphFunction.BOOST_HOURS:
-            match system_type:
-                case "EMBER-TS1" | "EMBER-TS2" | "EMBER-PS2" | "EMBER-RS":
-                    return 13
-                case "EMBER-PS":
-                    return 8
-                case _:
-                    return -1  # Unknown systemType
-        case EphFunction.BOOST_TIME:
-            match system_type:
-                case "EMBER-TS1" | "EMBER-TS2" | "EMBER-PS2" | "EMBER-RS":
-                    return 15
-                case "EMBER-PS":
-                    return 9
-                case _:
-                    return -1  # Unknown systemType
-        case EphFunction.BOILER_STATE:
-            match system_type:
-                case "EMBER-TS1" | "EMBER-TS2" | "EMBER-PS2" | "EMBER-RS":
-                    return 18
-                case "EMBER-PS":
-                    return 10
-                case _:
-                    return -1  # Unknown systemType
-        case EphFunction.BOOST_TEMP:
-            return 14
-        case EphFunction.MAX_TEMP:
-            match system_type:
-                case "EMBER-TS1" | "EMBER-TS2" | "EMBER-PS2":
-                    return 7  # Hi Temp Limit
-                case _:
-                    return -1  # Not supported for this systemType
-        case EphFunction.MIN_TEMP:
-            match system_type:
-                case "EMBER-TS1" | "EMBER-TS2" | "EMBER-PS2":
-                    return 8  # Lo Temp Limit
-                case _:
-                    return -1  # Not supported for this systemType
-        case EphFunction.AUTO_OVERRIDE:
-            match system_type:
-                case "EMBER-TS1" | "EMBER-TS2" | "EMBER-PS2":
-                    return 16  # override
-                case _:
-                    return -1  # Not supported for this systemType
-        case _:
-            return -1  # No point index found
+    system_map = EMBER_POINT_INDEX_MAP.get(system_type)
+    if system_map is None:
+        return -1  # Unknown systemType
+    
+    # Check if this function is supported for this system type
+    if ephFunction not in system_map:
+        return -1  # Function not supported for this system type
+    
+    value = system_map[ephFunction]
+    
+    # If it's a callable (special handling like TARGET_TEMP), call it with zone
+    if callable(value):
+        return value(zone)
+    
+    # Otherwise, return the static value
+    return value
 
 
 class EphFunction(Enum):
@@ -262,6 +216,117 @@ class EphFunction(Enum):
     MIN_TEMP = 11
     AUTO_OVERRIDE = 12
     
+
+# Special function for TARGET_TEMP that requires runtime logic
+def _get_target_temp_index(zone: dict) -> int:
+    """
+    Get TARGET_TEMP point index based on mode and override state.
+    
+    This requires runtime evaluation because the index depends on:
+    - Current mode (AUTO vs manual)
+    - AUTO_OVERRIDE state (for AUTO mode)
+    
+    Only called for EMBER-TS1, EMBER-TS2, and EMBER-PS2.
+    All three systems use the same logic:
+    - AUTO mode with override active: index 17
+    - AUTO mode without override: index 6
+    - Manual mode: index 12
+    
+    Note: Uses hardcoded indices (11 for MODE, 16 for AUTO_OVERRIDE) to avoid
+    circular dependencies with GetPointIndex.
+    """
+    system_type = zone.get("systemType")
+    if system_type is None:
+        return -1
+    
+    # Directly read MODE value (point index 11) - same for TS1/TS2/PS2
+    mode_value = _get_pointdata_value_by_index(zone, 11)
+    if mode_value == 0:  # AUTO mode
+        # Directly read AUTO_OVERRIDE value (point index 16) - same for TS1/TS2/PS2
+        override_value = _get_pointdata_value_by_index(zone, 16)
+        return 17 if (override_value == 1) else 6  # Override active: 17, else 6
+    else:
+        return 12  # Manual Mode
+
+
+# Mapping of system types to their point index mappings
+# This is the single source of truth for point index conversions
+# Values can be:
+#   - int: Direct point index value
+#   - Callable: Function that takes zone dict and returns int (for runtime logic)
+EMBER_POINT_INDEX_MAP: dict[str, dict[EphFunction, Union[int, Callable[[dict], int]]]] = {
+    "EMBER-TS1": {
+        # Universal functions (same across all systems)
+        EphFunction.ADVANCE_ACTIVE: 4,
+        EphFunction.CURRENT_TEMP: 5,
+        EphFunction.BOOST_TEMP: 14,
+        # System-specific functions
+        EphFunction.TARGET_TEMP: _get_target_temp_index,  # Special handling required
+        EphFunction.MODE: 11,
+        EphFunction.BOOST_HOURS: 13,
+        EphFunction.BOOST_TIME: 15,
+        EphFunction.BOILER_STATE: 18,
+        EphFunction.MAX_TEMP: 7,
+        EphFunction.MIN_TEMP: 8,
+        EphFunction.AUTO_OVERRIDE: 16,
+    },
+    "EMBER-TS2": {
+        # Universal functions (same across all systems)
+        EphFunction.ADVANCE_ACTIVE: 4,
+        EphFunction.CURRENT_TEMP: 5,
+        EphFunction.BOOST_TEMP: 14,
+        # System-specific functions
+        EphFunction.TARGET_TEMP: _get_target_temp_index,  # Special handling required
+        EphFunction.MODE: 11,
+        EphFunction.BOOST_HOURS: 13,
+        EphFunction.BOOST_TIME: 15,
+        EphFunction.BOILER_STATE: 18,
+        EphFunction.MAX_TEMP: 7,
+        EphFunction.MIN_TEMP: 8,
+        EphFunction.AUTO_OVERRIDE: 16,
+    },
+    "EMBER-RS": {
+        # Universal functions (same across all systems)
+        EphFunction.ADVANCE_ACTIVE: 4,
+        EphFunction.CURRENT_TEMP: 5,
+        EphFunction.BOOST_TEMP: 14,
+        # System-specific functions
+        EphFunction.TARGET_TEMP: 12,  # Static value - always 12 for EMBER-RS
+        EphFunction.MODE: 11,
+        EphFunction.BOOST_HOURS: 13,
+        EphFunction.BOOST_TIME: 15,
+        EphFunction.BOILER_STATE: 18,
+        # MAX_TEMP, MIN_TEMP, AUTO_OVERRIDE not supported for EMBER-RS
+    },
+    "EMBER-PS": {
+        # Universal functions (same across all systems)
+        EphFunction.ADVANCE_ACTIVE: 4,
+        EphFunction.CURRENT_TEMP: 5,
+        EphFunction.BOOST_TEMP: 14,
+        # System-specific functions
+        EphFunction.TARGET_TEMP: 6,  # Simple static mapping
+        EphFunction.MODE: 7,
+        EphFunction.BOOST_HOURS: 8,
+        EphFunction.BOOST_TIME: 9,
+        EphFunction.BOILER_STATE: 10,
+        # MAX_TEMP, MIN_TEMP, AUTO_OVERRIDE not supported for EMBER-PS
+    },
+    "EMBER-PS2": {
+        # Universal functions (same across all systems)
+        EphFunction.ADVANCE_ACTIVE: 4,
+        EphFunction.CURRENT_TEMP: 5,
+        EphFunction.BOOST_TEMP: 14,
+        # System-specific functions
+        EphFunction.TARGET_TEMP: _get_target_temp_index,  # Special handling required
+        EphFunction.MODE: 11,
+        EphFunction.BOOST_HOURS: 13,
+        EphFunction.BOOST_TIME: 15,
+        EphFunction.BOILER_STATE: 18,
+        EphFunction.MAX_TEMP: 7,
+        EphFunction.MIN_TEMP: 8,
+        EphFunction.AUTO_OVERRIDE: 16,
+    },
+}
 
 
 # """

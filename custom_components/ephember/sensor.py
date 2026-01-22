@@ -21,7 +21,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
 from . import EphemberConfigEntry
-from .const import CONF_GAS_CONSUMPTION_RATE, DOMAIN, EPHBoilerStates
+from .const import CONF_GAS_CONSUMPTION_RATE, CONF_GATEWAY_ID, DOMAIN, EPHBoilerStates
 from .pyephember2.pyephember2 import boiler_state, zone_name
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up EPH Controls Ember sensors from a config entry."""
     data = entry.runtime_data
+    selected_gateway_id = entry.data.get(CONF_GATEWAY_ID)
 
     entities: list[SensorEntity] = [
         # Diagnostic sensors for main device
@@ -53,6 +54,11 @@ async def async_setup_entry(
 
     # Build zone list from cached HTTP snapshot (populated at integration setup)
     homes = data.last_http_zones_data or []
+    
+    # Filter to selected home if gateway_id is specified
+    if selected_gateway_id:
+        homes = [home for home in homes if home.get("gatewayid") == selected_gateway_id]
+    
     zones: list[dict[str, Any]] = [
         zone for home in homes for zone in home.get("zones", [])
     ]

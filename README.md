@@ -44,13 +44,27 @@ This integration provides the following enhancements over the [original Home Ass
 2. Click **Add Integration**
 3. Search for "EPH Controls Ember"
 4. Enter your EPH Controls account credentials
-5. Configure optional parameters:
+5. **Home Selection** (if multiple homes are detected):
+   - If your account has multiple homes/gateways, you will be presented with a selection screen
+   - Choose which home you want to integrate
+   - Each home is displayed with its name, system type (e.g., EMBER-PS, EMBER-TS2), and device type
+   - Only zones from the selected home will be used to create devices and entities
+   - If you have only one home, this step is skipped automatically
+6. Configure optional parameters:
    - **Scan Interval**: Time between HTTP API polling requests (default: 300 seconds, range: 60-3600 seconds)
    - **Gas Consumption Rate**: Gas consumption rate of your boiler in m³ per hour (default: 1.5 m³/h, range: 0.1-10.0 m³/h)
 
 You can also modify these settings later by going to the integration's options in **Settings → Devices & Services → EPH Controls Ember → Options**.
 
 ### Configuration Parameters
+
+#### Home Selection
+- **When Required**: Only shown if your EPH Controls account has multiple homes/gateways
+- **Description**: During setup, if multiple homes are detected, you must select which home to integrate. The selection screen shows each home with:
+  - Home name
+  - System type (e.g., EMBER-PS, EMBER-TS2, EMBER-PS2)
+  - Device type (e.g., type 1, type 3)
+- **Behavior**: Only zones from the selected home will be used to create climate entities, sensors, and switches. If you need to integrate multiple homes, you can add the integration multiple times, selecting a different home each time.
 
 #### Scan Interval
 - **Default**: 300 seconds (5 minutes)

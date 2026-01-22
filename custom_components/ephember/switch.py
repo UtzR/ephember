@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import EphemberConfigEntry
-from .const import DOMAIN
+from .const import CONF_GATEWAY_ID, DOMAIN
 from .pyephember2.pyephember2 import zone_is_hotwater, zone_name
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,12 +28,20 @@ async def async_setup_entry(
     """Set up EPH Controls Ember setpoint modification switches from a config entry."""
     data = entry.runtime_data
     ember = data.ember
+    selected_gateway_id = entry.data.get(CONF_GATEWAY_ID)
 
     try:
         homes = await hass.async_add_executor_job(ember.get_zones)
     except RuntimeError as err:
         _LOGGER.error("Failed to get zones from EPH Controls: %s", err)
         return
+
+    # Filter to selected home if gateway_id is specified
+    if selected_gateway_id:
+        homes = [home for home in homes if home.get("gatewayid") == selected_gateway_id]
+        if not homes:
+            _LOGGER.error("Selected home (gateway_id: %s) not found", selected_gateway_id)
+            return
 
     # Only create switches for non-Hot Water Controllers (Thermostats, etc.)
     entities = [

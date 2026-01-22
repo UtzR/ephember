@@ -47,6 +47,7 @@ class EphemberData:
         self.last_http_request: datetime | None = None
         self.mqtt_connected: bool = False
         self.system_type: str | None = None
+        self.device_type: int | None = None
         # Track last 5 MQTT messages received and sent
         self.recent_mqtt_messages_received: deque = deque(maxlen=5)
         self.recent_mqtt_messages_sent: deque = deque(maxlen=5)
@@ -60,6 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
     """Set up EPH Controls Ember from a config entry."""
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
+    selected_gateway_id = entry.data.get(CONF_GATEWAY_ID)
 
     try:
         ember = await hass.async_add_executor_job(EphEmber, username, password)
@@ -71,6 +73,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
         homes = await hass.async_add_executor_job(ember.get_zones)
     except RuntimeError as err:
         raise ConfigEntryNotReady(f"Unable to get zones from EPH Controls: {err}") from err
+
+    # Filter to selected home if gateway_id is specified
+    if selected_gateway_id:
+        homes = [home for home in homes if home.get("gatewayid") == selected_gateway_id]
+        if not homes:
+            raise ConfigEntryNotReady(
+                f"Selected home (gateway_id: {selected_gateway_id}) not found"
+            )
+    elif len(homes) > 1:
+        # Multiple homes but no selection - this shouldn't happen with new configs
+        # but handle gracefully for existing configs
+        _LOGGER.warning(
+            "Multiple homes found but no gateway_id selected. Using first home."
+        )
+        homes = [homes[0]]
 
     # Create data storage
     data = EphemberData(ember)
@@ -101,15 +118,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
             # Extract systemType from first zone (all zones typically have same systemType)
             if data.system_type is None and zone.get("systemType"):
                 data.system_type = zone.get("systemType")
+        # Extract deviceType from first home (all homes typically have same deviceType)
+        if data.device_type is None and home.get("deviceType"):
+            data.device_type = home.get("deviceType")
 
     # Create main device in device registry
     device_registry = dr.async_get(hass)
+    
+    # Build model string with systemType and deviceType
+    model_parts = []
+    if data.system_type:
+        model_parts.append(data.system_type)
+    if data.device_type is not None:
+        model_parts.append(f"(type {data.device_type})")
+    model = " ".join(model_parts) if model_parts else "Ember System"
+    
     main_device = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name="EPH Controls Ember",
         manufacturer="EPH Controls",
-        model=data.system_type if data.system_type else "Ember System",
+        model=model,
     )
 
     # Set up MQTT callbacks

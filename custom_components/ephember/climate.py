@@ -48,7 +48,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import EphemberConfigEntry
-from .const import CONF_SCAN_INTERVAL, DOMAIN, EPHBoilerStates
+from .const import CONF_GATEWAY_ID, CONF_SCAN_INTERVAL, DOMAIN, EPHBoilerStates
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,12 +74,20 @@ async def async_setup_entry(
     """Set up EPH Controls Ember climate from a config entry."""
     data = entry.runtime_data
     ember = data.ember
+    selected_gateway_id = entry.data.get(CONF_GATEWAY_ID)
 
     try:
         homes = await hass.async_add_executor_job(ember.get_zones)
     except RuntimeError as err:
         _LOGGER.error("Failed to get zones from EPH Controls: %s", err)
         return
+
+    # Filter to selected home if gateway_id is specified
+    if selected_gateway_id:
+        homes = [home for home in homes if home.get("gatewayid") == selected_gateway_id]
+        if not homes:
+            _LOGGER.error("Selected home (gateway_id: %s) not found", selected_gateway_id)
+            return
 
     entities = [
         EphEmberThermostat(data, ember, zone, entry)
@@ -171,17 +179,18 @@ class EphEmberThermostat(ClimateEntity):
             manufacturer="EPH Controls",
             model=self._get_device_model(zone.get("deviceType")),
         )
-
     @staticmethod
     def _get_device_model(device_type: int | None) -> str:
         """Get human-readable model name from device type code."""
         device_models = {
-            2: "Thermostat (v1)",
-            4: "Hot Water Controller (v1)",
-            514: "Thermostat (v2)",
-            773: "Thermostatic Radiator Valve",
+            2: "Thermostat (type 2)",
+            4: "Hot Water Controller (type 4)",
+            258: "Thermostat (type 258)",
+            514: "Thermostat (type 514)",
+            773: "Thermostatic Radiator Valve (type 773)",
         }
         return device_models.get(device_type, f"Unknown ({device_type})")
+
 
     @property
     def preset_mode(self):
