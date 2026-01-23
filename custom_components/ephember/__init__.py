@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN, EPHBoilerStates
+from .const import CONF_GATEWAY_ID, DOMAIN, EPHBoilerStates
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,6 +92,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
     # Create data storage
     data = EphemberData(ember)
 
+    # Extract deviceType and systemType from the selected/filtered home
+    if homes:
+        selected_home = homes[0]
+        # Extract deviceType from the selected home
+        device_type = selected_home.get("deviceType")
+        _LOGGER.debug("Extracted deviceType from home: %s", device_type)
+        if device_type is not None:
+            data.device_type = device_type
+        
+        # Extract systemType from first zone of the selected home
+        zones = selected_home.get("zones", [])
+        if zones:
+            first_zone = zones[0]
+            system_type = first_zone.get("systemType")
+            _LOGGER.debug("Extracted systemType from zone: %s", system_type)
+            if system_type:
+                data.system_type = system_type
+
     # Update HTTP request timestamp for initial request
     data.last_http_request = datetime.now(timezone.utc)
     # Store HTTP zones data
@@ -115,12 +133,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
             zone_id = zone.get("zoneid")
             if mac and zone_id:
                 data.mac_to_zone_id[mac] = zone_id
-            # Extract systemType from first zone (all zones typically have same systemType)
-            if data.system_type is None and zone.get("systemType"):
-                data.system_type = zone.get("systemType")
-        # Extract deviceType from first home (all homes typically have same deviceType)
-        if data.device_type is None and home.get("deviceType"):
-            data.device_type = home.get("deviceType")
 
     # Create main device in device registry
     device_registry = dr.async_get(hass)
@@ -133,6 +145,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
         model_parts.append(f"(type {data.device_type})")
     model = " ".join(model_parts) if model_parts else "Ember System"
     
+    # Log for debugging
+    _LOGGER.debug(
+        "Creating/updating main device: system_type=%s, device_type=%s, model=%s",
+        data.system_type,
+        data.device_type,
+        model,
+    )
+    
     main_device = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
@@ -140,6 +160,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
         manufacturer="EPH Controls",
         model=model,
     )
+    
+    # Always explicitly update the device model to ensure it's current
+    # This handles cases where async_get_or_create doesn't update existing devices
+    _LOGGER.debug(
+        "Current device model: %s, desired model: %s, device_id: %s",
+        main_device.model,
+        model,
+        main_device.id,
+    )
+    device_registry.async_update_device(
+        main_device.id,
+        model=model,
+    )
+    _LOGGER.debug("Device model update called")
 
     # Set up MQTT callbacks
     def on_mqtt_message(topic: str, msg_dict: dict[str, Any]) -> None:

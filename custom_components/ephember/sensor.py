@@ -27,6 +27,19 @@ from .pyephember2.pyephember2 import boiler_state, zone_name
 _LOGGER = logging.getLogger(__name__)
 
 
+def _build_device_model_string(data: Any) -> str | None:
+    """
+    Build the device model string from system_type and device_type.
+    Matches the format used in __init__.py for the main device.
+    """
+    model_parts = []
+    if getattr(data, "system_type", None):
+        model_parts.append(data.system_type)
+    if getattr(data, "device_type", None) is not None:
+        model_parts.append(f"(type {data.device_type})")
+    return " ".join(model_parts) if model_parts else None
+
+
 def _zone_is_heating(zone: dict[str, Any]) -> bool:
     """Return True if zone boiler_state reports ON."""
     try:
@@ -181,7 +194,7 @@ class EphemberSystemHeatingSensor(SensorEntity, RestoreEntity):
             identifiers={(DOMAIN, entry.entry_id)},
             name="EPH Controls Ember",
             manufacturer="EPH Controls",
-            model=data.system_type if getattr(data, "system_type", None) else None,
+            model=_build_device_model_string(data),
         )
 
         self._state: str = "idle"  # Initialize with default state
@@ -265,7 +278,7 @@ class EphemberHeatingDurationSensor(SensorEntity, RestoreEntity):
             identifiers={(DOMAIN, entry.entry_id)},
             name="EPH Controls Ember",
             manufacturer="EPH Controls",
-            model=data.system_type if getattr(data, "system_type", None) else None,
+            model=_build_device_model_string(data),
         )
 
         # Track accumulated time in hours
@@ -480,7 +493,7 @@ class EphemberGasConsumptionSensor(SensorEntity, RestoreEntity):
             identifiers={(DOMAIN, entry.entry_id)},
             name="EPH Controls Ember",
             manufacturer="EPH Controls",
-            model=data.system_type if getattr(data, "system_type", None) else None,
+            model=_build_device_model_string(data),
         )
 
         # Track cumulative gas consumption in m³ (never resets)
@@ -718,7 +731,7 @@ class EphemberDiagnosticSensor(SensorEntity):
             identifiers={(DOMAIN, entry.entry_id)},
             name="EPH Controls Ember",
             manufacturer="EPH Controls",
-            model=data.system_type if data and data.system_type else None,
+            model=_build_device_model_string(data) if data else None,
         )
 
     @property
