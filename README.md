@@ -150,17 +150,13 @@ Each heating zone (e.g., "Downstairs", "Upstairs", "Hot Water") appears as a sep
 - **Description**: Per-zone heating state indicator that shows whether this specific zone's boiler is currently active
 - **Updates**: Instantly via MQTT when the zone's heating state changes
 
-## Supported Device Types
+## Supported System Types, Device Types and Zone Device Types
 
-| deviceType | Description | Product  (example combination)          |  System Name |  
-|------------|-------------|-----------------------------------------|-----------|
-| 2          | Thermostat  | Thermostat (RFR) on an RX7-RF           | EMBER-PS  | 
-| 4          | Hot Water   | Hot Water (RFC) Controller on an RX7-RF | EMBER-PS  |
-| 2          | Thermostat  | Thermostat (RFRP-OT) on an RF1A-OT      | EMBER-TS1 | 
-| 258        | Thermostat  | Thermostat (RFRP-OT) on an RF1A-OT      | EMBER-TS2 |
-| 514        | Thermostat  | Thermostat (RFR-v2) on an RX7-RF-V2     | EMBER-PS2 |
-| 773        | TRV         | TRV (eTRV) on an RF16?                  | EMBER-RS  |
+Note that a system is identified via a Sytem Type (EMBER-PS, EMBER-TS1, ...) and a Device Type (we have seen 1, 2, 3, 4). Then each attached zone device (Room or water thermostat) is also identified using a Zone Device Type (we have seen 2, 4, 258, 514, 773).   
 
+### Supported System Types and Device Types
+
+The following System Types have support if the Device Type is above 1. Some older installations use a Device Type 1 and it seems some required API calls are not supported by the EPH cloud. 
 
 | Name      | Mode | Setpoint-R | Setpoint-W | Temp-R| Boost | Boiler| Comment    
 |-----------|----- |------------|------------|-------|-------|-------|-------|
@@ -178,6 +174,17 @@ Each heating zone (e.g., "Downstairs", "Upstairs", "Hot Water") appears as a sep
 - Temp-R: Can read the temperature
 - Boost: Boost preset mode is working
 - Boiler: Boiler state is reported (Idle/Heating)
+
+### Supported Zone Device Types
+
+| deviceType | Description | Product  (example combination)          |  System Type |  
+|------------|-------------|-----------------------------------------|-----------|
+| 2          | Thermostat  | Thermostat (RFR) on an RX7-RF           | EMBER-PS  | 
+| 4          | Hot Water   | Hot Water (RFC) Controller on an RX7-RF | EMBER-PS  |
+| 2          | Thermostat  | Thermostat (RFRP-OT) on an RF1A-OT      | EMBER-TS1 | 
+| 258        | Thermostat  | Thermostat (RFRP-OT) on an RF1A-OT      | EMBER-TS2 |
+| 514        | Thermostat  | Thermostat (RFR-v2) on an RX7-RF-V2     | EMBER-PS2 |
+| 773        | TRV         | TRV (eTRV) on an RF16?                  | EMBER-RS  |
 
 ## Differences from Core Integration
 
