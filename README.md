@@ -161,7 +161,7 @@ The following System Types have support if the Device Type is above 1. Some olde
 | Name      | Mode | Setpoint-R | Setpoint-W | Temp-R| Boost | Boiler| Comment    
 |-----------|----- |------------|------------|-------|-------|-------|-------|
 | EMBER-PS  | ✅   |  ✅         |  ✅        |  ✅   | ✅     | ✅    |       |
-| EMBER-PS2 | ❓   |  🔺         |  ❓        |  ✅   | ❓     | ❓    | Setpoint problem in All-Day mode |
+| EMBER-PS2 | ✅   |  🔺         |  ✅        |  ✅   | ✅     | ✅    | Setpoint problem in All-Day mode |
 | EMBER-TS1 | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❓    |       |
 | EMBER-TS2 | ✅   |  ✅         |  ✅        |  ✅   | ✅     | ✅    |       |
 | EMBER-RS  | ❓   |  ❓         |  ❓        |  ❓   | ❓     | ❓    |       |
