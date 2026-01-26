@@ -48,6 +48,10 @@ def _zone_is_heating(zone: dict[str, Any]) -> bool:
         return False
 
 
+# Legacy diagnostic sensor names removed in favour of MQTT Connection attributes
+_LEGACY_DIAGNOSTIC_SENSOR_NAMES = ("Last MQTT Sent", "Last MQTT Received", "Last HTTP Request")
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: EphemberConfigEntry,
@@ -57,12 +61,17 @@ async def async_setup_entry(
     data = entry.runtime_data
     selected_gateway_id = entry.data.get(CONF_GATEWAY_ID)
 
+    # Remove legacy timestamp sensors (now attributes on MQTT Connection) to avoid duplicates
+    registry = er.async_get(hass)
+    for name in _LEGACY_DIAGNOSTIC_SENSOR_NAMES:
+        uid = f"{entry.entry_id}_{name}"
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, uid)
+        if entity_id:
+            registry.async_remove(entity_id)
+
     entities: list[SensorEntity] = [
-        # Diagnostic sensors for main device
+        # Diagnostic sensor for main device (timestamps as attributes to avoid logbook noise)
         EphemberMQTTConnectionSensor(data, entry),
-        EphemberMQTTSentSensor(data, entry),
-        EphemberMQTTReceivedSensor(data, entry),
-        EphemberHTTPRequestSensor(data, entry),
     ]
 
     # Build zone list from cached HTTP snapshot (populated at integration setup)
@@ -740,7 +749,12 @@ class EphemberDiagnosticSensor(SensorEntity):
 
 
 class EphemberMQTTConnectionSensor(EphemberDiagnosticSensor):
-    """Sensor for MQTT connection status."""
+    """Sensor for MQTT connection status.
+
+    Diagnostic timestamps (last MQTT sent/received, last HTTP request) are exposed
+    as extra_state_attributes to avoid logbook noise. Attribute-only updates do
+    not create history entries.
+    """
 
     _attr_name = "MQTT Connection"
     _attr_icon = "mdi:connection"
@@ -753,38 +767,14 @@ class EphemberMQTTConnectionSensor(EphemberDiagnosticSensor):
             return "connected" if self._data.mqtt_connected else "disconnected"
         return "disconnected"
 
-
-class EphemberMQTTSentSensor(EphemberDiagnosticSensor):
-    """Sensor for last MQTT message sent timestamp."""
-
-    _attr_name = "Last MQTT Sent"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_icon = "mdi:send"
-
     @property
-    def native_value(self) -> datetime | None:
-        return self._data.last_mqtt_sent if self._data and self._data.last_mqtt_sent else None
-
-
-class EphemberMQTTReceivedSensor(EphemberDiagnosticSensor):
-    """Sensor for last MQTT message received timestamp."""
-
-    _attr_name = "Last MQTT Received"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_icon = "mdi:download"
-
-    @property
-    def native_value(self) -> datetime | None:
-        return self._data.last_mqtt_received if self._data and self._data.last_mqtt_received else None
-
-
-class EphemberHTTPRequestSensor(EphemberDiagnosticSensor):
-    """Sensor for last HTTP request timestamp."""
-
-    _attr_name = "Last HTTP Request"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_icon = "mdi:web"
-
-    @property
-    def native_value(self) -> datetime | None:
-        return self._data.last_http_request if self._data and self._data.last_http_request else None
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        """Diagnostic timestamps (attributes only; no logbook entries)."""
+        if not self._data:
+            return {}
+        d = self._data
+        return {
+            "last_mqtt_sent": d.last_mqtt_sent.isoformat() if d.last_mqtt_sent else None,
+            "last_mqtt_received": d.last_mqtt_received.isoformat() if d.last_mqtt_received else None,
+            "last_http_request": d.last_http_request.isoformat() if d.last_http_request else None,
+        }

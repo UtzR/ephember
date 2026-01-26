@@ -88,43 +88,34 @@ climate:
 
 ### Main Device: "EPH Controls Ember"
 
-The integration creates one main device that provides system-wide monitoring and control. This device includes **7 sensors**:
+The integration creates one main device that provides system-wide monitoring and control. This device includes **4 sensors**:
 
 1. **MQTT Connection** (`sensor.eph_controls_ember_mqtt_connection`)
    - Shows the connection status to the EPH Controls MQTT broker
    - States: `connected` or `disconnected`
    - Updates in real-time via MQTT
+   - **Diagnostic attributes** (no logbook entries): `last_mqtt_sent`, `last_mqtt_received`, `last_http_request` — timestamps of last MQTT/HTTP activity, available on the entity’s attributes for debugging without flooding the activity log.
 
-2. **Last MQTT Sent** (`sensor.eph_controls_ember_last_mqtt_sent`)
-   - Timestamp of the last MQTT message sent to the broker
-   - Useful for debugging communication issues
-
-3. **Last MQTT Received** (`sensor.eph_controls_ember_last_mqtt_received`)
-   - Timestamp of the last MQTT message received from the broker
-   - Shows when the system last received real-time updates
-
-4. **Last HTTP Request** (`sensor.eph_controls_ember_last_http_request`)
-   - Timestamp of the last HTTP API request
-   - Updated according to the Scan Interval configuration
-
-5. **Heating** (`sensor.eph_controls_ember_heating`)
+2. **Heating** (`sensor.eph_controls_ember_heating`)
    - System-wide heating state indicator
    - States: `idle` (no zones heating) or `heating` (at least one zone heating)
    - Updates instantly via MQTT when any zone starts or stops heating
 
-6. **Heating Duration** (`sensor.eph_controls_ember_heating_duration`)
+3. **Heating Duration** (`sensor.eph_controls_ember_heating_duration`)
    - Tracks daily heating time in hours
    - Increments gradually every minute while heating is active
    - Resets to 0 at midnight local time
    - Uses the system-wide heating sensor to track when heating is active
 
-7. **Gas Consumption** (`sensor.eph_controls_ember_gas_consumption`)
+4. **Gas Consumption** (`sensor.eph_controls_ember_gas_consumption`)
    - Tracks cumulative gas consumption in cubic meters (m³)
    - Calculated from heating duration multiplied by the configured gas consumption rate
    - Never resets (continuously increasing counter)
    - Updates every minute while heating is active
    - State class: `total_increasing` (suitable for energy monitoring)
    - Requires the "Gas Consumption Rate" configuration parameter
+
+**Note:** The former standalone sensors "Last MQTT Sent", "Last MQTT Received", and "Last HTTP Request" were removed; their values are now attributes of the MQTT Connection sensor. On upgrade, any existing instances of those entities are automatically removed.
 
 ### Zone Devices
 
