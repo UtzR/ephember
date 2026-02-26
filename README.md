@@ -175,6 +175,7 @@ The following System Types have support if the Device Type is above 1. Some olde
 | 2          | Thermostat  | Thermostat (RFRP-OT) on an RF1A-OT      | EMBER-TS1 | 
 | 258        | Thermostat  | Thermostat (RFRP-OT) on an RF1A-OT      | EMBER-TS2 |
 | 514        | Thermostat  | Thermostat (RFR-v2) on an RX7-RF-V2     | EMBER-PS2 |
+| 516        | Hot Water   | Hot Water Controller on an RX7-RF-V2    | EMBER-PS2 |
 | 773        | TRV         | TRV (eTRV) on an RF16?                  | EMBER-RS  |
 
 ## Differences from Core Integration

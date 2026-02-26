@@ -187,6 +187,7 @@ class EphEmberThermostat(ClimateEntity):
             4: "Hot Water Controller (type 4)",
             258: "Thermostat (type 258)",
             514: "Thermostat (type 514)",
+            516: "Hot Water Controller (type 516)",
             773: "Thermostatic Radiator Valve (type 773)",
         }
         return device_models.get(device_type, f"Unknown ({device_type})")
@@ -575,7 +576,7 @@ class EphEmberThermostat(ClimateEntity):
         """Get schedule type based on device type."""
         if device_type == 258:
             return "EMBER-TS"
-        # deviceType 2, 4, 514 (EMBER-PS/EMBER-PS2) or unknown
+        # deviceType 2, 4, 514, 516 (EMBER-PS/EMBER-PS2) or unknown
         return "EMBER-PS"
 
     @staticmethod
@@ -583,7 +584,7 @@ class EphEmberThermostat(ClimateEntity):
         """Format one day's schedule into a dict.
         
         For EMBER-TS2 (deviceType 258): formats p1-p6 with time and temperature (t1-t6).
-        For EMBER-PS/EMBER-PS2 (deviceType 2, 4, 514): formats p1-p3 with startTime/endTime.
+        For EMBER-PS/EMBER-PS2 (deviceType 2, 4, 514, 516): formats p1-p3 with startTime/endTime.
         """
         if device_type == 258:
             # EMBER-TS2 format: p1-p6 with time and temperature

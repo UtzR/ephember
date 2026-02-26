@@ -557,12 +557,12 @@ def zone_is_scheduled_on(zone):
     return False
 
 # Hot water devices - no temperature control
-HotWaterDevices = [4]
+HotWaterDevices = [4, 516]
 
 def zone_is_hotwater(zone):
     """
     Check if zone is a hot water device.
-    Hot water devices (deviceType 4) have no temperature control.
+    Hot water devices (deviceType 4, 516) have no temperature control.
     """
     return zone.get("deviceType") in HotWaterDevices
 
