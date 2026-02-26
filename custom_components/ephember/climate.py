@@ -320,8 +320,8 @@ class EphEmberThermostat(ClimateEntity):
     async def _call_mqtt_with_resync(self, send_func: Callable[[str], bool]) -> bool:
         """Call a MQTT action; on Unknown zone, resync HTTP and retry once."""
         try:
-            # First attempt with current zone id
-            return send_func(self._zone_id)
+            # First attempt with current zone id (run in executor: may do MQTT connect → HTTP auth)
+            return await self.hass.async_add_executor_job(send_func, self._zone_id)
         except RuntimeError as err:
             # Only handle the specific "Unknown zone: ..." case
             if "Unknown zone" not in str(err):
@@ -377,7 +377,7 @@ class EphEmberThermostat(ClimateEntity):
                 self._zone_id,
             )
 
-            return send_func(self._zone_id)
+            return await self.hass.async_add_executor_job(send_func, self._zone_id)
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set the operation mode - OFF or ON."""
