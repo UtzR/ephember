@@ -25,7 +25,6 @@ from .const import CONF_GAS_CONSUMPTION_RATE, CONF_GATEWAY_ID, DOMAIN, EPHBoiler
 from .pyephember2.pyephember2 import (
     boiler_state,
     zone_current_temperature,
-    zone_is_hotwater,
     zone_name,
     zone_target_temperature,
 )
@@ -286,7 +285,7 @@ class EphemberZoneSetpointSensor(SensorEntity):
         """Prime state from zone data if available."""
         await super().async_added_to_hass()
         zone = _get_zone_by_id(self._data, self._zone_id)
-        if zone is not None and not zone_is_hotwater(zone):
+        if zone is not None:
             try:
                 self._value = zone_target_temperature(zone)
             except Exception:
@@ -295,19 +294,16 @@ class EphemberZoneSetpointSensor(SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return target temperature; None for hot water zones."""
+        """Return target temperature (read-only for hot water zones)."""
         return self._value
 
     @callback
     def handle_zone_update(self, zone: dict[str, Any]) -> None:
         """Handle a zone update (MQTT or HTTP refresh)."""
-        if zone_is_hotwater(zone):
+        try:
+            self._value = zone_target_temperature(zone)
+        except Exception:
             self._value = None
-        else:
-            try:
-                self._value = zone_target_temperature(zone)
-            except Exception:
-                self._value = None
         self.async_write_ha_state()
 
 

@@ -150,7 +150,7 @@ Each heating zone (e.g., "Downstairs", "Upstairs", "Hot Water") appears as a sep
 #### Target Temperature Sensor
 - **Entity**: `sensor.<zone_name>_target_temperature`
 - **Unit**: °C
-- **Description**: Current setpoint (target temperature) for the zone. Unavailable for hot water zones (no setpoint control)
+- **Description**: Current setpoint (target temperature) for the zone. Displayed for all zones including hot water; for hot water zones the setpoint is read-only (cannot be changed via the integration)
 - **Updates**: Via MQTT when the zone sends new data, and on each HTTP poll
 
 ## Supported System Types, Device Types and Zone Device Types
