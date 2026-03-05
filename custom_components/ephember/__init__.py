@@ -39,6 +39,8 @@ class EphemberData:
         self.zone_id_to_switch: dict[str, Any] = {}
         # Heating sensors (push-updated via MQTT)
         self.zone_id_to_heating_sensor: dict[str, Any] = {}
+        self.zone_id_to_current_temp_sensor: dict[str, Any] = {}
+        self.zone_id_to_setpoint_sensor: dict[str, Any] = {}
         self.system_heating_sensor: Any | None = None
         # Cached heating state per zone_id (True=heating)
         self.zone_heating: dict[str, bool] = {}
@@ -243,6 +245,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: EphemberConfigEntry) -> 
                     heating_sensor = data.zone_id_to_heating_sensor.get(zone_id)
                     if heating_sensor is not None:
                         hass.loop.call_soon_threadsafe(heating_sensor.handle_zone_update, zone)
+                    current_temp_sensor = data.zone_id_to_current_temp_sensor.get(zone_id)
+                    if current_temp_sensor is not None:
+                        hass.loop.call_soon_threadsafe(current_temp_sensor.handle_zone_update, zone)
+                    setpoint_sensor = data.zone_id_to_setpoint_sensor.get(zone_id)
+                    if setpoint_sensor is not None:
+                        hass.loop.call_soon_threadsafe(setpoint_sensor.handle_zone_update, zone)
                     if data.system_heating_sensor is not None:
                         hass.loop.call_soon_threadsafe(data.system_heating_sensor.handle_system_update)
         _LOGGER.debug("MQTT update received for MAC %s (zone_id: %s)", mac, zone_id)

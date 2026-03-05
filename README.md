@@ -141,6 +141,18 @@ Each heating zone (e.g., "Downstairs", "Upstairs", "Hot Water") appears as a sep
 - **Description**: Per-zone heating state indicator that shows whether this specific zone's boiler is currently active
 - **Updates**: Instantly via MQTT when the zone's heating state changes
 
+#### Current Temperature Sensor
+- **Entity**: `sensor.<zone_name>_current_temperature`
+- **Unit**: °C
+- **Description**: Current room or water temperature reported by the zone
+- **Updates**: Via MQTT when the zone sends new data, and on each HTTP poll
+
+#### Target Temperature Sensor
+- **Entity**: `sensor.<zone_name>_target_temperature`
+- **Unit**: °C
+- **Description**: Current setpoint (target temperature) for the zone. Unavailable for hot water zones (no setpoint control)
+- **Updates**: Via MQTT when the zone sends new data, and on each HTTP poll
+
 ## Supported System Types, Device Types and Zone Device Types
 
 Note that a system is identified via a Sytem Type (EMBER-PS, EMBER-TS1, ...) and a Device Type (we have seen 1, 2, 3, 4). Then each attached zone device (Room or water thermostat) is also identified using a Zone Device Type (we have seen 2, 4, 258, 514, 516, 773).   

@@ -490,11 +490,20 @@ class EphEmberThermostat(ClimateEntity):
                                 if old_state != is_heating:
                                     heating_sensor = self._data.zone_id_to_heating_sensor.get(zid)
                                     if heating_sensor is not None:
-                                        # Schedule update on event loop (thread-safe)
-                                        # This runs in executor thread, so schedule on event loop
                                         self.hass.loop.call_soon_threadsafe(
                                             heating_sensor.handle_zone_update, zone
                                         )
+                                # Notify zone current temp and setpoint sensors (refresh on every poll)
+                                current_temp_sensor = self._data.zone_id_to_current_temp_sensor.get(zid)
+                                if current_temp_sensor is not None:
+                                    self.hass.loop.call_soon_threadsafe(
+                                        current_temp_sensor.handle_zone_update, zone
+                                    )
+                                setpoint_sensor = self._data.zone_id_to_setpoint_sensor.get(zid)
+                                if setpoint_sensor is not None:
+                                    self.hass.loop.call_soon_threadsafe(
+                                        setpoint_sensor.handle_zone_update, zone
+                                    )
                             except Exception as err:
                                 _LOGGER.debug(
                                     "Error updating zone_heating cache from HTTP for zone_id %s: %s",

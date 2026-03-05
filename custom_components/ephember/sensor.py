@@ -7,7 +7,7 @@ import logging
 from typing import Any, Callable
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.const import UnitOfTime, UnitOfVolume
+from homeassistant.const import UnitOfTemperature, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -22,7 +22,13 @@ from homeassistant.util import dt as dt_util
 
 from . import EphemberConfigEntry
 from .const import CONF_GAS_CONSUMPTION_RATE, CONF_GATEWAY_ID, DOMAIN, EPHBoilerStates
-from .pyephember2.pyephember2 import boiler_state, zone_name
+from .pyephember2.pyephember2 import (
+    boiler_state,
+    zone_current_temperature,
+    zone_is_hotwater,
+    zone_name,
+    zone_target_temperature,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +52,16 @@ def _zone_is_heating(zone: dict[str, Any]) -> bool:
         return boiler_state(zone) == EPHBoilerStates.ON
     except Exception:
         return False
+
+
+def _get_zone_by_id(data: Any, zone_id: str) -> dict[str, Any] | None:
+    """Return the zone dict for zone_id from data.last_http_zones_data, or None."""
+    homes = data.last_http_zones_data or []
+    for home in homes:
+        for zone in home.get("zones", []):
+            if zone.get("zoneid") == zone_id:
+                return zone
+    return None
 
 
 # Legacy diagnostic sensor names removed in favour of MQTT Connection attributes
@@ -85,14 +101,22 @@ async def async_setup_entry(
         zone for home in homes for zone in home.get("zones", [])
     ]
 
-    # Per-zone heating sensors (attached to the same zone devices as the climate entities)
+    # Per-zone sensors (heating, current temperature, target temperature)
     for zone in zones:
         zid = zone.get("zoneid")
         if not zid:
             continue
-        sensor = EphemberZoneHeatingSensor(data, entry, zone)
-        entities.append(sensor)
-        data.zone_id_to_heating_sensor[zid] = sensor
+        heating_sensor = EphemberZoneHeatingSensor(data, entry, zone)
+        entities.append(heating_sensor)
+        data.zone_id_to_heating_sensor[zid] = heating_sensor
+
+        current_temp_sensor = EphemberZoneCurrentTemperatureSensor(data, entry, zone)
+        entities.append(current_temp_sensor)
+        data.zone_id_to_current_temp_sensor[zid] = current_temp_sensor
+
+        setpoint_sensor = EphemberZoneSetpointSensor(data, entry, zone)
+        entities.append(setpoint_sensor)
+        data.zone_id_to_setpoint_sensor[zid] = setpoint_sensor
 
         # Ensure cache has a value (used for system sensor & startup)
         if zid not in data.zone_heating:
@@ -182,6 +206,108 @@ class EphemberZoneHeatingSensor(SensorEntity, RestoreEntity):
         heating = _zone_is_heating(zone)
         self._data.zone_heating[self._zone_id] = heating
         self._state = "heating" if heating else "idle"
+        self.async_write_ha_state()
+
+
+class EphemberZoneCurrentTemperatureSensor(SensorEntity):
+    """Sensor that exposes per-zone current temperature (°C)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Current temperature"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:thermometer"
+    _attr_should_poll = False
+
+    def __init__(self, data: Any, entry: EphemberConfigEntry, zone: dict[str, Any]) -> None:
+        self._data = data
+        self._entry = entry
+        self._zone_id: str = zone.get("zoneid", "")
+        self._zone_name: str = zone_name(zone)
+        self._attr_unique_id = f"{entry.entry_id}_{self._zone_id}_current_temperature"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._zone_id)},
+            name=self._zone_name,
+            manufacturer="EPH Controls",
+        )
+        self._value: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Prime state from zone data if available."""
+        await super().async_added_to_hass()
+        zone = _get_zone_by_id(self._data, self._zone_id)
+        if zone is not None:
+            try:
+                self._value = zone_current_temperature(zone)
+            except Exception:
+                pass
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return current temperature from cached zone or last update."""
+        return self._value
+
+    @callback
+    def handle_zone_update(self, zone: dict[str, Any]) -> None:
+        """Handle a zone update (MQTT or HTTP refresh)."""
+        try:
+            self._value = zone_current_temperature(zone)
+        except Exception:
+            self._value = None
+        self.async_write_ha_state()
+
+
+class EphemberZoneSetpointSensor(SensorEntity):
+    """Sensor that exposes per-zone target temperature / setpoint (°C)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Target temperature"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_icon = "mdi:thermometer-check"
+    _attr_should_poll = False
+
+    def __init__(self, data: Any, entry: EphemberConfigEntry, zone: dict[str, Any]) -> None:
+        self._data = data
+        self._entry = entry
+        self._zone_id: str = zone.get("zoneid", "")
+        self._zone_name: str = zone_name(zone)
+        self._attr_unique_id = f"{entry.entry_id}_{self._zone_id}_target_temperature"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._zone_id)},
+            name=self._zone_name,
+            manufacturer="EPH Controls",
+        )
+        self._value: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Prime state from zone data if available."""
+        await super().async_added_to_hass()
+        zone = _get_zone_by_id(self._data, self._zone_id)
+        if zone is not None and not zone_is_hotwater(zone):
+            try:
+                self._value = zone_target_temperature(zone)
+            except Exception:
+                pass
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> float | None:
+        """Return target temperature; None for hot water zones."""
+        return self._value
+
+    @callback
+    def handle_zone_update(self, zone: dict[str, Any]) -> None:
+        """Handle a zone update (MQTT or HTTP refresh)."""
+        if zone_is_hotwater(zone):
+            self._value = None
+        else:
+            try:
+                self._value = zone_target_temperature(zone)
+            except Exception:
+                self._value = None
         self.async_write_ha_state()
 
 
