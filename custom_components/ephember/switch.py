@@ -20,6 +20,19 @@ from .pyephember2.pyephember2 import zone_is_hotwater, zone_name
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_zone_device_model(device_type: int | None) -> str:
+    """Return human-readable zone device model name."""
+    device_models = {
+        2: "Thermostat (type 2)",
+        4: "Hot Water Controller (type 4)",
+        258: "Thermostat (type 258)",
+        514: "Thermostat (type 514)",
+        516: "Hot Water Controller (type 516)",
+        773: "Thermostatic Radiator Valve (type 773)",
+    }
+    return device_models.get(device_type, f"Unknown ({device_type})")
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: EphemberConfigEntry,
@@ -33,8 +46,15 @@ async def async_setup_entry(
     try:
         homes = await hass.async_add_executor_job(ember.get_zones)
     except RuntimeError as err:
-        _LOGGER.error("Failed to get zones from EPH Controls: %s", err)
-        return
+        homes = data.last_http_zones_data or []
+        if homes:
+            _LOGGER.warning(
+                "Failed to refresh zones from EPH Controls (%s); using cached zone data",
+                err,
+            )
+        else:
+            _LOGGER.error("Failed to get zones from EPH Controls: %s", err)
+            return
 
     # Filter to selected home if gateway_id is specified
     if selected_gateway_id:
@@ -73,6 +93,7 @@ class EphemberSetpointSwitch(RestoreEntity, SwitchEntity):
         self._zone_name = zone_name(zone)
         self._zone = zone
         self._zone_id = zone["zoneid"]
+        self._zone_device_type: int | None = zone.get("deviceType")
         self._hot_water = zone_is_hotwater(zone)
         self._attr_unique_id = f"{self._zone_id}_setpoint_enabled"
         
@@ -87,6 +108,7 @@ class EphemberSetpointSwitch(RestoreEntity, SwitchEntity):
             identifiers={(DOMAIN, self._zone_id)},
             name=self._zone_name,
             manufacturer="EPH Controls",
+            model=_get_zone_device_model(self._zone_device_type),
         )
 
     async def async_added_to_hass(self) -> None:

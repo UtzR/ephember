@@ -45,6 +45,19 @@ def _build_device_model_string(data: Any) -> str | None:
     return " ".join(model_parts) if model_parts else None
 
 
+def _get_zone_device_model(device_type: int | None) -> str:
+    """Return human-readable zone device model name."""
+    device_models = {
+        2: "Thermostat (type 2)",
+        4: "Hot Water Controller (type 4)",
+        258: "Thermostat (type 258)",
+        514: "Thermostat (type 514)",
+        516: "Hot Water Controller (type 516)",
+        773: "Thermostatic Radiator Valve (type 773)",
+    }
+    return device_models.get(device_type, f"Unknown ({device_type})")
+
+
 def _zone_is_heating(zone: dict[str, Any]) -> bool:
     """Return True if zone boiler_state reports ON."""
     try:
@@ -154,6 +167,7 @@ class EphemberZoneHeatingSensor(SensorEntity, RestoreEntity):
         self._entry = entry
         self._zone_id: str = zone.get("zoneid")
         self._zone_name: str = zone_name(zone)
+        self._zone_device_type: int | None = zone.get("deviceType")
 
         self._attr_unique_id = f"{entry.entry_id}_{self._zone_id}_heating"
 
@@ -162,6 +176,7 @@ class EphemberZoneHeatingSensor(SensorEntity, RestoreEntity):
             identifiers={(DOMAIN, self._zone_id)},
             name=self._zone_name,
             manufacturer="EPH Controls",
+            model=_get_zone_device_model(self._zone_device_type),
         )
 
         self._state: str = "idle"  # Initialize with default state
@@ -224,11 +239,13 @@ class EphemberZoneCurrentTemperatureSensor(SensorEntity):
         self._entry = entry
         self._zone_id: str = zone.get("zoneid", "")
         self._zone_name: str = zone_name(zone)
+        self._zone_device_type: int | None = zone.get("deviceType")
         self._attr_unique_id = f"{entry.entry_id}_{self._zone_id}_current_temperature"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._zone_id)},
             name=self._zone_name,
             manufacturer="EPH Controls",
+            model=_get_zone_device_model(self._zone_device_type),
         )
         self._value: float | None = None
 
@@ -273,11 +290,13 @@ class EphemberZoneSetpointSensor(SensorEntity):
         self._entry = entry
         self._zone_id: str = zone.get("zoneid", "")
         self._zone_name: str = zone_name(zone)
+        self._zone_device_type: int | None = zone.get("deviceType")
         self._attr_unique_id = f"{entry.entry_id}_{self._zone_id}_target_temperature"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._zone_id)},
             name=self._zone_name,
             manufacturer="EPH Controls",
+            model=_get_zone_device_model(self._zone_device_type),
         )
         self._value: float | None = None
 

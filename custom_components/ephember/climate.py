@@ -79,8 +79,15 @@ async def async_setup_entry(
     try:
         homes = await hass.async_add_executor_job(ember.get_zones)
     except RuntimeError as err:
-        _LOGGER.error("Failed to get zones from EPH Controls: %s", err)
-        return
+        homes = data.last_http_zones_data or []
+        if homes:
+            _LOGGER.warning(
+                "Failed to refresh zones from EPH Controls (%s); using cached zone data",
+                err,
+            )
+        else:
+            _LOGGER.error("Failed to get zones from EPH Controls: %s", err)
+            return
 
     # Filter to selected home if gateway_id is specified
     if selected_gateway_id:
